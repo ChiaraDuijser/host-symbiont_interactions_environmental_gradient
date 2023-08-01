@@ -23,17 +23,14 @@ library(poppr)
 
 # Set working directory
 ```{r}
-setwd("C:/Users/156010/OneDrive - UTS/Documents/DArTseq - R files/Report-DPoc22-7677")
-
-genetics <- "C:/Users/156010/OneDrive - UTS/Documents/DArTseq - R files/Report-DPoc22-7677"
-setwd(genetics)
+setwd("../Report-DPoc22-7677")
 ```
 
 # Import data in dartR; reading DArT Files into a Genlight Object
 ```{r}
 gl <- gl.read.dart(
       filename = "Report_DPoc22-7677_SNP_2.csv",
-      ind.metafile="230317_ind_metrics_latlonv2.csv") # I added coordinates to sampling locations for the Mantel test
+      ind.metafile="230317_ind_metrics_latlon.csv") # I added coordinates to sampling locations for the Mantel test
 
 gl@other$ind.metrics$plate_location
 indNames(gl)
@@ -339,7 +336,7 @@ qmat <- gl.plot.structure(out_struc, K=2, colors_clusters = c("#1F78B4", "#33A02
 gl.map.structure(qmat, gl5,K=2) #here you can find info on the cluster percentages
 
 # Structure plot
-strucK2 <- read.csv("../structureRun_K1-4_repK10_burnin10000_MCMC100000_COL.csv", stringsAsFactors=TRUE)
+strucK2 <- read.csv("../structureRun_K1-5_repK10_burnin10000_MCMC100000_COL.csv", stringsAsFactors=TRUE)
 str(strucK2)
 strucK2$Cluster <- as.factor(strucK2$Cluster)
 strucK2$id <- as.factor(strucK2$id)
@@ -361,7 +358,7 @@ ggplot(strucK2, aes(fill=Cluster, y=Value, x=id)) +
   labs(y="Admixture proportion", x="")
 ggsave("StructurePlot_K2_row.pdf", width = 9, height = 3) #nrow
 
-strucK2pie <- read.csv("../structureRun_K1-4_repK10_burnin10000_MCMC100000_PIE.csv")
+strucK2pie <- read.csv("../structureRun_K1-5_repK10_burnin10000_MCMC100000_PIE.csv")
 str(strucK2pie)
 strucK2pie$Cluster <- as.factor(strucK2pie$Cluster)
 strucK2pie$pop <- as.factor(strucK2pie$pop)
@@ -381,7 +378,7 @@ ggsave("Structure_Pie.pdf", width=6, height=6)
 ```{r}
 gl <- gl.read.dart(
       filename = "Report_DPoc22-7677_SNP_2.csv",
-      ind.metafile="230317_ind_metrics_latlonv3.csv") # v3; additional samples
+      ind.metafile="230317_ind_metrics_latlon_additional_samples.csv") # v3; additional samples
 gl <- gl.compliance.check(gl)
 gl_add <- gl.drop.ind(gl, ind.list=ind_drop_list)
 gl_add
