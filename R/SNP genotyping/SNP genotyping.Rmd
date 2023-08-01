@@ -1,0 +1,446 @@
+---
+title: "SNP genotyping"
+author: "Chiara Duijser"
+date: "2023-03-17"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Libraries
+```{r}
+library(dartR)
+library(RColorBrewer)
+library(devtools)
+library(ggplot2)
+library(plotly)
+library(poppr)
+```
+
+# Set working directory
+```{r}
+setwd("C:/Users/156010/OneDrive - UTS/Documents/DArTseq - R files/Report-DPoc22-7677")
+
+genetics <- "C:/Users/156010/OneDrive - UTS/Documents/DArTseq - R files/Report-DPoc22-7677"
+setwd(genetics)
+```
+
+# Import data in dartR; reading DArT Files into a Genlight Object
+```{r}
+gl <- gl.read.dart(
+      filename = "Report_DPoc22-7677_SNP_2.csv",
+      ind.metafile="230317_ind_metrics_latlonv2.csv") # I added coordinates to sampling locations for the Mantel test
+
+gl@other$ind.metrics$plate_location
+indNames(gl)
+```
+
+# Check individual and population names
+```{r}
+gl$ind.names #or gl@ind.names or indNames(gl)
+gl$pop #or gl@pop or pop(gl)
+
+# Check names of all available ind.metrics via -> metrics from metadata file are placed at gl@other$ind.metrics$.
+names(gl@other$ind.metrics) #service and plate_location come from filename = "Report_DPoc22-7677_SNP_2.csv"
+names(gl@other$loc.metrics)
+
+gl@other$ind.metrics$Chiara_id
+```
+
+To ensure your manually generated genlight object is compliant (data is in the genlight object), use:
+```{r}
+gl <- gl.compliance.check(gl)
+#gl.report.history(gl)
+```
+
+# Saving a genlight object
+Reading the data in from Excel spreadsheet and converting to a genlight object takes a lot of computation => sensible to save your genlight object in binary form using the following code:
+```{r}
+saveRDS(gl, file="gl.Rdata")
+# read it in again with
+gl <- readRDS("gl.Rdata")
+```
+
+# Interogating a genlight object
+```{r}
+gl
+nLoc(gl) #number of loci
+#locNames(gl) #list of loci
+nInd(gl) #number of individuals
+#indNames(gl) #list of individuals
+nPop(gl) #number of populations
+popNames(gl) #list of populations
+#as.matrix(gl) #generate a matrix of the SNP scores, with 0 as homozygous reference, 2 as homozygous alternate, and 1 as heterozygous
+glPlot(gl) #smear plot of individual against locus, useful for gross pattern identification and assessment of allelic dropout; allelic dropout occurs when PCR defined for a given locus fails to amplify one or both alleles of a diploid individual
+gl.smearplot(gl)
+```
+
+# Removing technical reps with the most missing data
+I have two technical replicates for each sample. DArT already runs 30% of the samples we provide them as technical replicates. At this moment there is no function to average over our own technical replicates on the plate. It is suggested to choose one of the two replicates based on the mismatches between samples or use the one with the less missing data. Below I used gl.report.callrate(gl, method="ind") to report the missing data per individual. Based on this I made a selection of individuals with the most missing data and dropped those from the dartR object. So I'm left with one datapoint per sample which has the least missing data.
+
+In the ind_drop_list I name the individuals with most missing data. These numbers are based on the ind_names provided by dart. In the Excel file "ind_metrics5_NApercent.xlsx".
+
+```{r}
+gl.report.callrate(gl, method="ind") #reports missing data by individual
+
+# Drop individuals with most missing data based on id=ind_names column in Excel!
+ind_drop_list <- c("18.1", "19", "20.1", "21.1", "22", "23.1", "24.1", "25", "26.2", "27", "27.1", "28.1", "29.1", "31", "32", "33", "35", "35.1", "36.2", "37", "38", "39.1", "40", "41.1", "42", "43.1", "44.1", "45", "46.1", "47", "47.1", "49.1", "50", "51", "51.1", "52.1", "54")
+
+gl4 <- gl.drop.ind(gl, ind.list=ind_drop_list)
+gl4
+
+popNames(gl4)
+indNames(gl4)
+```
+
+# Filtering based on genlight object created from SNP data
+## Manipulating populations and individuals
+Removal of additional samples on the DArT sequencing run.
+
+```{r}
+gl5 <- gl.drop.pop(gl4, pop.list="Emma")
+gl5 <- gl.drop.pop(gl5, pop.list="Extra")
+gl5 <- gl.drop.pop(gl5, pop.list="Opal - acuta")
+gl5 <- gl.drop.pop(gl5, pop.list="Opal - verrucosa")
+gl5 <- gl.drop.pop(gl5, pop.list="Opal - damicornis")
+
+# Because of the deletion of populations/individuals many of the metadata variables provided by DArT no longer apply. It does not automatically recalculate the locus metrics. Best to do the manipulation (like above) and then run:
+
+gl5 <- gl.recalc.metrics(gl5)
+
+# A DArT dataset will not have monomorphic loci, but they can arise, along with loci that are scored all NA, when populations or individuals are deleted. So the above script will generate monomorphic loci, where the deleted individuals have all the variation at a locus, and these monomorphic loci can be deleted using:
+gl5 <- gl.filter.monomorphs(gl5)
+gl5 #DArT object now contains 23 genotypes => mangrove (12) and reef (11) w/o their technical reps + 18 from Emma = 41
+
+
+saveRDS(gl5, file="gl5.Rdata")
+# read it in again with
+gl5 <- readRDS("gl5.Rdata")
+```
+
+# Use dartR report functions before choosing filtering thresholds
+```{r}
+gl.report.secondaries(gl5) 
+gl.report.reproducibility(gl5) 
+gl.report.callrate(gl5, method="loc") 
+gl.report.callrate(gl5, method="ind") 
+gl.report.maf(gl5)
+
+# Other filtering parameters
+gl.report.monomorphs(gl5) 
+gl.report.rdepth(gl5_OM_OR) 
+#gl.report.hamming
+gl.report.overshoot(gl5)
+gl.report.taglength(gl5)
+```
+
+### Filtering
+I used these parameters and order of filtering parameters here:
+
+1. Filter secondaries (helps with linkage disequilibrium)
+2. Filter on reproducibility (everything above 0.97 is the same; so say 0.995)
+3. Filter loci by call rate. This step is where I try a few different options (e.g. 0.85, 0.90, 0.95) and go through the entire pipeline including PCA/Fst to make sure the results are not wildly different based on changing the call rate threshold. 
+4. Filter by read depth (filter out < 5x) 
+5. Filter Minor Allele Frequencies (remove any MAF scores < 0.05)
+6. Filter monomorphic loci 
+7. Impute missing data using nearest neighbor function – since most downstream analyses require no missing data; gl.impute(gl, method="neighbour") 
+
+```{r}
+# Remove all but one locus where there is more than one locus per sequence tag
+gl5 <- gl.filter.secondaries(gl5)
+
+# Remove those loci or individuals for which the reproducibility (average over the two allelic states) falls below a specified threshold
+gl5 <- gl.filter.reproducibility(gl5, t=0.995)
+
+# Calculate call rate (proportion with non-missing) scores for each locus or individual and remove those loci or individuals below a specified threshold
+gl5 <- gl.filter.callrate(gl5, method="loc", threshold=0.95)
+gl5 <- gl.filter.callrate(gl5, method="ind", threshold=0.80) #nothing extra gets filtered out
+
+# Filter by read depth (filter out < 5x)
+gl5 <- gl.filter.rdepth(gl5, lower=5)
+
+# Filter Minor Allele Frequencies, e.g. remove any MAF scores < 0.05
+gl5 <- gl.filter.maf(gl5, threshold=0.05)
+
+# Remove all monomorphic loci, including loci for which the scores are all missing (NA)
+gl5 <- gl.filter.monomorphs(gl5)
+
+# Impute missing data using nearest neighbour function; since most downstream analysis require no missing data
+gl5 <- gl.impute(gl5, method="neighbour") 
+
+# Recalculate the locus metrics after manipulation/filtering
+gl5 <- gl.recalc.metrics(gl5)
+
+gl5 #with impute function no missing data!
+
+saveRDS(gl5, file="gl5.Rdata")
+# read it in again with
+gl5 <- readRDS("gl5.Rdata")
+```
+
+# PCA plot
+```{r}
+pcoa_gl5 <- gl.pcoa(gl5)
+names(pcoa_gl5)
+popNames(gl5)
+
+col <- gl.select.colors(library='brewer',palette='Paired',ncolors=4, select=c(4,2,3,1))
+shp <- gl.select.shapes(select=c(16,17,16,17))
+gl.pcoa.plot(pcoa_gl5, gl5, pt.colors=col, pt.shapes=shp, pt.size=3, pop.labels="pop", save2tmp = TRUE) 
+
+# Figure 2C
+gl.pcoa.plot(pcoa,test,save2tmp = TRUE)
+# listing the plots and tables in tempdir
+gl.list.reports()
+# choosing the plot or table to retrieve
+res <- gl.print.reports(1)
+# modifying the plot
+(res <- res + theme_bw() + 
+  labs(x=substitute(paste(bold('PC1 (56.7%)'))), y = substitute(paste(bold('PC2 (16.8%)'))), fill="Population"))
+#ggsave("PCA_host_genetics.pdf", width=7, height=4)
+
+# Interactive plot
+gl.pcoa.plot(pcoa_gl5, gl5, pt.colors=col, pt.shapes=shp, pt.size=3, interactive=TRUE)
+ggplotly()
+```
+
+#### Genetic distance matrix between populations
+A genetic distance between two individuals (=samples, specimens) or between two populations is a measure of their genetic dissimilarity. If two individuals or populations have very different genetic profiles, then the measure of dissimilarity will be large. If they have similar genetic profiles, then the measure of dissimilarity will be low. If they have identical genetic profiles, the measure of dissimilarity will be zero.
+
+Distances of relevance to population genetics can be calculated for SNP genotype data and SNP presence-absence data using dartR functions gl.dist.ind() and gl.dist.pop().
+
+**Note:** Method = "euclidean" => unscaled Euclidean metric is severely affected by missing values and should be used only for complete data (which is what I have here due to use of gl.impute() function). 
+In gl.dist.ind() you can use method="euclidean", scale=TRUE => then you're using scaled Euclidean distance; see ?gl.dist.ind()
+
+```{r}
+### Use this for Procrustes ordination
+#(dist_matrix <- gl.dist.ind(gl5, method="euclidean", scale=TRUE)) #calculates various distances between individuals based on allele frequencies; could I use this to say something about clones?
+(D_pop <- gl.dist.pop(gl5, method="euclidean")) #clearly 4 distinct populations right based on the histogram of genetic distances
+
+gl.plot.heatmap(D_pop, 
+                key=TRUE, keysize=1.5, key.title=NA, key.ylab=NA,
+                cexRow=1, cexCol=1, margins=c(10,10), srtCol=45)
+
+#gl.plot.network(D_ind, gl5)
+#gl.plot.network(D_pop) # not sure if I can plot a network for populations
+```
+
+
+# Genetic distance (Fst) (non-metric)
+```{r}
+(Fst <- gl.fst.pop(gl5))
+Fst$Pvalues
+
+# Output
+#$Fsts
+               #Inner mangrove Outer mangrove Inner reef Outer reef
+#Inner mangrove             NA             NA         NA         NA
+#Outer mangrove     0.09298895             NA         NA         NA
+#Inner reef         0.55600271       0.746360         NA         NA
+#Outer reef         0.26389593       0.465852  0.1422869         NA
+```
+
+# AMOVA = Analysis of MOlecular VAriance
+```{r}
+gl.amova(gl5)
+
+# Working on AMOVA function to include different hierarchical levels. In the meantime, you could use the implementation in the package poppr:
+# Converting genlight to genind
+geni <- gl2gi(gl5)
+
+saveRDS(geni, file="genind.Rdata")
+geni <- readRDS("genind.Rdata")
+
+# Assing pop information to strata
+strata(geni) <- data.frame(pop=pop(geni))
+table(strata(geni, ~pop)) #take a look at different populations
+# Performing AMOVA
+amova_poppr <- poppr.amova(geni, ~pop) #, nperm=100; the number of permutations passed to the pegas implementation of amova.
+amova_poppr
+```
+
+## AMOVA - significance testing
+```{r}
+set.seed(1999)
+gl5signif <- randtest(amova_poppr, nrepet=999)
+plot(gl5signif)
+gl5signif
+
+# Clone correction; P. acuta is a brooder
+amova_popprcc <- poppr.amova(geni, ~pop, clonecorrect=TRUE) 
+amova_popprcc
+gl5signifcc <- randtest(amova_poppr, nrepet=999)
+plot(gl5signifcc)
+gl5signifcc
+```
+
+# Phenetic tree displaying genetic similarity
+```{r}
+# Part of Figure 5
+gl.tree.nj(gl5, type="phylogram", labelsize=1.0)
+```
+
+
+### Genomic relatedness
+```{r}
+popNames(gl5)
+grm_colors <- c("#33A02C", "#1F78B4", "#B2DF8A", "#A6CEE3")
+# relatedness matrix
+
+res <- gl.grm(gl5,plotheatmap = TRUE, palette_discrete = grm_colors)
+ggsave("heatmap2_relatedness.pdf")
+
+# relatedness network
+# Identical twins/clones/same individual
+res2 <- gl.grm.network(res,gl5,method="kk",relatedness_factor = 0.5, palette_discrete = grm_colors)
+
+# Sibling/Parent-offspring
+res3 <- gl.grm.network(res,gl5,method="kk",relatedness_factor = 0.25, palette_discrete = grm_colors)
+
+# Half-sibling
+res4 <- gl.grm.network(res,gl5,method="kk",relatedness_factor = 0.125, palette_discrete = grm_colors)
+
+# Third cousin
+res5 <- gl.grm.network(res,gl5,method="fr",relatedness_factor = 0.004, palette_discrete = grm_colors)
+
+#ggsave("FR_genomic relationship.pdf", width=10)
+res6 <- gl.grm.network(res,gl5,method="kk",relatedness_factor = 0.004, palette_discrete = grm_colors)
+#ggsave("KK_genomic relationship.pdf", width=10)
+
+# Unrelated
+res7 <- gl.grm.network(res,gl5,method="kk",relatedness_factor = 0.0, palette_discrete = grm_colors, node.label=FALSE)
+ggsave("KK_genomic relationship_00.pdf", width=10, height=7)
+```
+
+# Isolation by distance (IBD) analysis
+```{r}
+gl.ibd(gl5, distance = "Fst", coordinates = "latlon", permutations = 999) #999 is default
+```
+
+Genetic structure can be overestimated by STRUCTURE analyses when IBD is present in the dataset. Isolation by distance is not present in the dataset as based on Mantel tests conducted on genetic distances (Fst) and geographic distances between study sites (m) (Mantel test, r = 0.1873, p-value = 0.41667). Since there's no significant correlation between Fst and m we can proceed with STRUCTURE analysis.
+
+# Structure analysis
+```{r}
+out_struc <- gl.run.structure(
+  gl5, 
+  k.range = 1:5, 
+  num.k.rep = 10, 
+  burnin = 10000,
+  numreps = 100000,
+  exec = "C:/Installers/structure_windows_console/console/structure.exe", 
+  noadmix=FALSE)
+
+out_evanno <- gl.evanno(out_struc)
+qmat <- gl.plot.structure(out_struc, K=2, colors_clusters = c("#1F78B4", "#33A02C"))
+gl.map.structure(qmat, gl5,K=2) #here you can find info on the cluster percentages
+
+# Structure plot
+strucK2 <- read.csv("../structureRun_K1-4_repK10_burnin10000_MCMC100000_COL.csv", stringsAsFactors=TRUE)
+str(strucK2)
+strucK2$Cluster <- as.factor(strucK2$Cluster)
+strucK2$id <- as.factor(strucK2$id)
+strucK2$pop <- factor(strucK2$pop, levels=c("Outer reef", "Inner reef", "Outer mangrove", "Inner mangrove"))
+
+# Figure 2A
+ggplot(strucK2, aes(fill=Cluster, y=Value, x=id)) +
+  geom_bar(position="fill", stat="identity") +
+  #facet_wrap(~ pop, ncol = 1, scales = "free_x") +
+  facet_wrap(~ pop, nrow = 1, scales = "free_x") +
+  scale_fill_manual(values=c("#1F78B4", "#33A02C")) +
+  theme(legend.position = "bottom",
+      #axis.text.y=element_blank(),
+      #axis.ticks.y = element_blank(),
+      axis.text.x=element_blank(), axis.ticks.x = element_blank(),
+      axis.title.y = element_text(size=10, face="bold"),
+      panel.border = element_blank(), panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(), axis.ticks = element_blank()) +
+  labs(y="Admixture proportion", x="")
+ggsave("StructurePlot_K2_row.pdf", width = 9, height = 3) #nrow
+
+strucK2pie <- read.csv("../structureRun_K1-4_repK10_burnin10000_MCMC100000_PIE.csv")
+str(strucK2pie)
+strucK2pie$Cluster <- as.factor(strucK2pie$Cluster)
+strucK2pie$pop <- as.factor(strucK2pie$pop)
+strucK2pie$pop <- factor(strucK2pie$pop, levels=c("Outer reef", "Inner reef", "Outer mangrove", "Inner mangrove"))
+
+# Figure 2B
+ggplot(strucK2pie, aes(x = "", y = Value, fill = Cluster)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +
+  facet_wrap(~ pop, ncol = 2) +
+  scale_fill_manual(values = c("#33A02C", "#1F78B4")) +
+  theme_void()
+ggsave("Structure_Pie.pdf", width=6, height=6)
+```
+
+# Prepare genlight object for fixed difference analysis (with additional samples)
+```{r}
+gl <- gl.read.dart(
+      filename = "Report_DPoc22-7677_SNP_2.csv",
+      ind.metafile="230317_ind_metrics_latlonv3.csv") # v3; additional samples
+gl <- gl.compliance.check(gl)
+gl_add <- gl.drop.ind(gl, ind.list=ind_drop_list)
+gl_add
+
+# Add additional samples
+gl5_add <- gl.drop.pop(gl_add, pop.list="Extra")
+gl5_add <- gl.drop.pop(gl5_add, pop.list="Opal - acuta")
+gl5_add <- gl.drop.pop(gl5_add, pop.list="Opal - verrucosa")
+gl5_add <- gl.drop.pop(gl5_add, pop.list="Opal - damicornis")
+gl5_add <- gl.recalc.metrics(gl5_add)
+gl5_add <- gl.filter.monomorphs(gl5_add)
+gl5_add #DArT object now contains 23 genotypes => mangrove (12) and reef (11) w/o their technical reps + 18 from Emma = 41
+
+
+gl5_add <- gl.filter.secondaries(gl5_add)
+gl5_add <- gl.filter.reproducibility(gl5_add, t=0.995)
+gl5_add <- gl.filter.callrate(gl5_add, method="loc", threshold=0.95)
+gl5_add <- gl.filter.callrate(gl5_add, method="ind", threshold=0.80) #nothing extra gets filtered out
+gl5_add <- gl.filter.rdepth(gl5_add, lower=5)
+gl5_add <- gl.filter.maf(gl5_add, threshold=0.05)
+gl5_add <- gl.filter.monomorphs(gl5_add)
+gl5_add <- gl.recalc.metrics(gl5_add)
+
+gl5_add # no impute function
+
+saveRDS(gl5_add, file="gl5_add.Rdata")
+gl5_add <- readRDS("gl5_add.Rdata")
+```
+
+# Fixed difference analysis
+Population sizes
+Inner mangrove: 6 + 10 = 16
+Inner reef: 5
+Outer mangrove: 6
+Outer reef: 6 + 7 = 13
+            
+```{r}
+D <- gl.fixed.diff(gl5_add, v=4)
+# Warning: Fixed differences can arise through sampling error if sampling sizes are small
+
+D$fd
+# Note that there are a few comparisons (IM-OM and IR-OR) with zero fixed differences. These are candidates to aggregate on the basis of presenting no diagnostic allelic differences.
+
+# Aggregate
+# At this point we might consider aggregating sample sites pairwise where they have not accumulated any fixed differences.
+D2 <- gl.collapse(D, tpop=1, verbose=3)
+# Population with 0 fixed differences are now grouped together. Inner and outer mangrove in Inner mangrove+ and Inner and outer reef in Inner reef+
+
+D2$fd
+# This is as far as the collapsing of the fixed difference matrix can go, with tpop set to 1.
+
+# Testing for Significance: there is one last issue to consider, the possibility that distinctions between our final aggregations are based on false positives (given the sample/finite sample size). Note that my populations have sample sizes of 22 (mangrove) and 18 (reef).
+D4 <- gl.fixed.diff(D2, test=TRUE,v=3)
+D4
+# Outcome: Inner mangrove+ vs Inner reef+  [p = 1 ,ns]
+# The 2 fixed allelic differences between Inner mangrove+ and Inner reef+ don't exceed the false positive rate, probably given the exceptionally low sample sizes (despite the fact that we grouped them).
+```
+
+
+
+
+
