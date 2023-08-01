@@ -1,0 +1,809 @@
+---
+title: "ITS2 sequence analysis_CMD"
+author: "Chiara Duijser"
+date: "2023-04-23"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Set working directory 
+```{r user_definitions}
+ITS2project <- "~/ITS2_community_analysis"
+setwd(ITS2project)
+```
+
+```{r}
+# Packages required to analyse this data. If you do not have them, please install them.
+library(tidyverse)
+library(kmer)
+library(phangorn)
+library(GUniFrac)
+library(ggtree)
+library(patchwork)
+library(bioseq)
+library(ape)
+library(Biostrings)
+library(usedist)
+
+# Packages required for Symportal_merger, PCoA and Procrustis analysis
+#library(tidyverse)
+library(bioseq)
+#library(kmer)
+#library(GUniFrac)
+library(randomcoloR)
+library(plotly)
+source("functions.R")
+
+# Additional
+library(vegan)
+
+# Custom functions for loading and handling fasta files
+dna_to_DNAbin <- function (dna){
+  DNAbin <- as_DNAbin(dna)
+  names(DNAbin) <- names(dna)
+  return(DNAbin)
+}
+
+read_fasta_df <- function (file = "") {
+  fasta <- readLines(file)
+  ind <- grep(">", fasta)
+  s <- data.frame(ind = ind, from = ind + 1, to = c((ind - 
+    1)[-1], length(fasta)))
+  seqs <- rep(NA, length(ind))
+  for (i in 1:length(ind)) {
+    seqs[i] <- paste(fasta[s$from[i]:s$to[i]], collapse = "")
+  }
+  tib <- tibble(label = gsub(">", "", fasta[ind]), sequence = seqs)
+  return(tib)
+}
+```
+
+# Read in and format the **sequence** tables
+
+```{r}
+# Import sequence table
+seqs <- read_tsv("../259_20230421T204816_DBV_20230422T042656.seqs.absolute.abund_and_meta.txt") %>%
+    mutate(sample_name = as.factor(sample_name)) %>%
+    filter(!(is.na(sample_name))) # remove the final empty row; see Excel or text file row 98 "seq_accession"
+#ANY SAMPLES NOT TO BE ANALYSED ADD ANOTHER FILTER HERE. Row = seq_accession but nothing more in other cells.
+
+# Import sample_name metadata
+meta <- read_csv("../230423 metadata_species_colony_position_CMD.csv")
+str(meta)
+meta$habitat <- as.factor(meta$habitat)
+meta$habitat <- factor(meta$habitat, levels=c("Outer reef", "Inner reef", "Outer mangrove", "Inner mangrove"))
+meta$colony_position <- as.factor(meta$colony_position)
+
+# Convert sequence table to long format
+seqs_long <- seqs %>%
+  select(sample_name, `B1`:`3165881_F`) %>% # Select sample_names and the each column contain sequence count data; check colnames(seqs)
+  pivot_longer(`B1`:`3165881_F`) %>% # make into long dataframe
+  filter(value > 0) %>% # Remove zero values
+  filter(!(is.na(sample_name))) %>% # Remove non-name samples (tutorial specific)
+  left_join(., meta) # add in your metadata
+
+# What is our per sample sequence depth?
+sample_totals <- seqs_long %>%
+  group_by(sample_name) %>%
+  #group_by(sample_name, name) %>%
+  summarise(total = sum(value))
+
+keepers <- sample_totals %>%
+  filter(total > 1500)
+
+# Filter out the failed samples and convert counts to relative abundance
+seqs_long <- seqs_long %>%
+  filter(sample_name %in% keepers$sample_name) %>%
+  group_by(sample_name) %>%
+  mutate(value_rel = value/sum(value)) %>% # Convert to relative abundance
+  ungroup() %>%
+  mutate(name = as.factor(name)) # Make sequence names a factor
+
+# Create a palette for each genus in Symbiodiniaceae
+genera_2 <- seqs_long %>%
+  distinct(name) %>%
+  mutate(genus = case_when(
+    str_sub(name, start = 1, end = 1) == "A" | str_detect(name, "_A") ~ 'Symbiodinium',
+    str_sub(name, start = 1, end = 1) == "B" | str_detect(name, "_B") ~ 'Breviolum',
+    str_sub(name, start = 1, end = 1) == "C" | str_detect(name, "_C") ~ 'Cladocopium',
+    str_sub(name, start = 1, end = 1) == "D" | str_detect(name, "_D") ~ 'Durusdinium',
+    str_sub(name, start = 1, end = 1) == "E" | str_detect(name, "_E") ~ 'Effrenium',
+    str_sub(name, start = 1, end = 1) == "F" | str_detect(name, "_F") ~ 'Fugacium',
+    str_sub(name, start = 1, end = 1) == "G" | str_detect(name, "_G") ~ 'Gerakladium',
+    str_sub(name, start = 1, end = 1) == "A" | str_detect(name, "_A") ~ 'Symbiodinium',
+    str_sub(name, start = 1, end = 1) == "H" | str_detect(name, "_H") ~ 'Halluxium',
+    str_sub(name, start = 1, end = 1) == "I" | str_detect(name, "_I") ~ 'Symbiodinium_I',
+    TRUE ~ "Unknown")) %>%
+  distinct(genus) # If more than 8 genera - need to look at a new palette for the below
+
+n <- length(levels(seqs_long$name))
+seq_names <- sort(levels((seqs_long$name)))
+
+a <- seq_names[str_sub(seq_names, 1, 1) == "A" | str_detect(seq_names, "_A")]
+b <- seq_names[str_sub(seq_names, 1, 1) == "B" | str_detect(seq_names, "_B")]
+c <- seq_names[str_sub(seq_names, 1, 1) == "C" | str_detect(seq_names, "_C")]
+d <- seq_names[str_sub(seq_names, 1, 1) == "D" | str_detect(seq_names, "_D")]
+#e <- seq_names[str_sub(seq_names, 1, 1) == "E" | str_detect(seq_names, "_E")]
+f <- seq_names[str_sub(seq_names, 1, 1) == "F" | str_detect(seq_names, "_F")]
+g <- seq_names[str_sub(seq_names, 1, 1) == "G" | str_detect(seq_names, "_G")]
+h <- seq_names[str_sub(seq_names, 1, 1) == "H" | str_detect(seq_names, "_H")]
+i <- seq_names[str_sub(seq_names, 1, 1) == "I" | str_detect(seq_names, "_I")]
+
+b_pal <- randomcoloR::randomColor(count = length(b), hue = "purple")
+c_pal <- randomcoloR::randomColor(count = length(c), hue = "green")
+d_pal <- randomcoloR::randomColor(count = length(d), hue = "red")
+f_pal <- randomcoloR::randomColor(count = length(f), hue = "blue")
+
+names(b_pal) <- b
+names(c_pal) <- c
+names(d_pal) <- d
+names(f_pal) <- f
+
+# Merge the palettes and replace the non-profile sequences with grey
+seqs_pal2 <- c(c_pal, d_pal, f_pal, b_pal)
+```
+
+# Read in and format the **profile** tables
+
+```{r}
+# Read in the profile data
+profiles_raw <- read_tsv("../259_20230421T204816_DBV_20230422T042656.profiles.absolute.abund_and_meta.txt", skip = 6) %>% 
+    select(sample_name = `...2`, `C1d/C42.2/C1-C1bl-C3cg-C1b-C45c`:`D1bt/D6/D4-D1-D1cf-D1bs-D1ce-D1dr`) %>% 
+    filter(!is.na(sample_name)) 
+
+profiles_long <- profiles_raw %>%
+  pivot_longer(`C1d/C42.2/C1-C1bl-C3cg-C1b-C45c`:`D1bt/D6/D4-D1-D1cf-D1bs-D1ce-D1dr`) %>% # Convert profile table to long format
+  #mutate(name = paste0("p_", name)) %>% # Add a p_ to the beginning of each profile (Some profiles are single sequence profiles and clash with the Sequence names)
+  filter(sample_name %in% seqs_long$sample_name) %>% # Remove samples that do not appear in the Sequence dataframe above (were filtered out)
+  mutate(value = as.numeric(value)) %>%
+  filter(value > 0) %>% # Remove 0 abundance profiles
+  group_by(sample_name) %>%
+  mutate(sample_name = as.factor(sample_name),
+         name = as.factor(name)) %>%
+  ungroup() %>%
+  left_join(., meta) # Add in metadata
+
+# What is the total number of profile-related sequences in each sample?
+profiles_sum <- profiles_long %>%
+  group_by(sample_name) %>%
+  summarise(total = sum(value))
+
+# How many sequences in each sample are not part of a profile?
+residual <- left_join(profiles_sum, sample_totals, by = "sample_name") %>%
+  mutate(residual = total.y - total.x) %>%
+  select(sample_name, value = residual) %>%
+  mutate(name = as.factor("non-profile sequences")) %>%
+  left_join(., meta)
+
+# Combine the profile and non-profile sequences
+profile_data <- rbind(profiles_long, residual) %>%
+  group_by(sample_name) %>%
+  mutate(value_rel = value/sum(value)) # convert to relative abundance
+
+# Create palette for profiles (this is a darker palette)
+library(RColorBrewer)
+(n <- length(levels(profile_data$name)))
+profile_pal = brewer.pal(n=9, name="Set3")
+names(profile_pal) <- levels(profile_data$name)
+
+profile_pal_pie = brewer.pal(n=9, name="Dark2")
+profile_pal_pie['Non-profile sequences'] <- "#808080" 
+names(profile_pal_pie) <- levels(profile_data$name)
+
+# Part of Figure 5
+ggplot(profile_data, aes(x = "", y = value_rel, fill = name)) +
+  geom_bar(stat = "identity", width = 1, color="transparent") +
+  coord_polar("y", start = 0) +
+  theme_void() +
+  facet_wrap(~ habitat) +
+  scale_fill_manual(values = profile_pal_pie) +
+  labs(title = "Relative values of habitat in profile data", fill = "Name") +
+  theme(panel.grid.minor = element_blank())
+#ggsave(filename=paste0(ITS2project, "/ITS2_Profile_Pie_", Sys.Date(), ".pdf"))
+```
+
+```{r}
+# Join profiles and sequence data together into single dataframe
+all_data <- rbind(seqs_long, profile_data)
+
+# Merge the palettes and replace the non-profile sequences with grey
+all_pal <- c(seqs_pal2, profile_pal_pie)
+all_pal['Non-profile sequences'] <- "#808080"
+
+# Generate the bar-plots
+#theme_set(theme_bw()) # set the theme
+
+s_order <- all_data %>%
+  distinct(sample_name, habitat, colony_ID, colony_position) %>%
+  arrange(habitat, colony_position) %>%
+  pull(sample_name)
+
+ITS2 <- all_data %>%
+ mutate(sample_name = fct_relevel(sample_name, s_order)) %>% # reorder sample factor; this line doesn't work because s_order not found
+  arrange(name) %>%
+  mutate(name = fct_relevel(name, names(all_pal))) %>%
+  ggplot(aes(x=sample_name, y= value_rel)) +
+geom_bar(stat = "identity", aes(fill = name, colour = name), size=0.25, width=0.95) +
+facet_wrap(~ habitat, nrow = 1, scales = "free_x") +
+theme(aspect.ratio = 5,
+      legend.position = "bottom",
+      axis.text.y=element_blank(), axis.ticks.y = element_blank(),
+      axis.text.x = element_blank(),
+      axis.title.y = element_text(size=10, face="bold"),
+      legend.title = element_text(size=12, face="bold"),
+      legend.text = element_text(size=12),
+      panel.border = element_blank(), panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      strip.text.x = element_text(size = 12, face="bold")) + #face="bold.italic"
+scale_fill_manual(values = all_pal, breaks = levels(profile_data$name)) +
+scale_colour_manual(values = all_pal, breaks = levels(profile_data$name)) +
+geom_hline(yintercept = 1) +
+#guides(fill = guide_legend(title="ITS2 type profile", nrow=3)) +
+ylab("ITS2 sequence or \ntype profile relative abundance") +
+xlab(element_blank())
+
+position <- all_data %>%
+distinct(sample_name, habitat, colony_position) %>%
+mutate(sample_name = fct_relevel(sample_name, s_order)) %>% # reorder sample factor; this line doesn't work because s_order not found
+  ggplot(aes(x = sample_name, y = 1)) +
+  geom_bar(stat = "identity", aes(fill = colony_position, colour = colony_position), size=0.25, width=0.95) +
+  facet_wrap(~ habitat, nrow = 1, scales = "free_x") +
+  theme_void() +
+  theme(axis.title.x = element_blank(),
+        axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+        axis.text.x = element_blank(), axis.ticks.x = element_blank(),
+        aspect.ratio = 5,
+        strip.background = element_blank(),
+   strip.text = element_blank()) +
+  scale_fill_manual(values = c("grey", "yellow")) +
+  scale_colour_manual(values = c("grey", "yellow")) +
+  guides(fill = "none")
+
+library(patchwork)
+
+# Figure 4 (adjusted in Adobe Illustrator)
+ITS2 / position
+```
+
+# Read in the sequences and create the unifrac distances
+Unifrac measures the phylogenetic distance between sets of taxa in a phylogenetic tree as the fraction of the branch length of the tree that leads to descendants from either one environment or the other, but not both.
+
+```{r}
+# Import and filter sequence data
+fasta <- read_fasta_df("../259_20230421T204816_DBV_20230422T042656.seqs.fasta") %>%
+  filter(label %in% seqs_long$name) %>% # keep only the sequences present in the sequence table above
+  #filter(!str_detect(label, "A|G")) %>% # remove any clades/genera that you don't want included. This example removes any sequences from clade A and G.
+  deframe() %>%
+  as_dna() # convert to bioseq DNA format
+
+# Create a kmer-based pairwise sequence similarity matrix
+kdist <- fasta %>%
+  dna_to_DNAbin() %>%
+  kdistance(k = 7, residues = "DNA", method = "edgar") %>% # test how different k size alters the interpretation
+  as.matrix()
+#Note - small K = less discriminating power. Large k = more discriminating power but significantly more compute time
+
+# Use hierarchical clustering to create a phylogenetic tree based on the pairwise k-mer distances
+tree <- kdist %>% phangorn::upgma()
+
+# Create a wide count table to use in the weighted versions of the unifrac measurements
+seqs_wide <- seqs_long %>%
+  select(sample_name, name, value) %>% # need the sample names, the sequence names, and the count data
+  #filter(!str_detect(name, "A|G")) %>% # again filter out the clades/genera that are not of interest to match the fasta above
+  pivot_wider(names_from = name, values_from = value, values_fill = 0) %>% # convert from long to wide;  values_fill = 0 will replace the NAs
+  tibble::column_to_rownames(var = "sample_name") # sample names need to be column names
+
+# Calculate the unifrac distance
+unidist <- GUniFrac(seqs_wide, tree)
+unifracs <- unidist$unifracs
+# du <- unifracs[, , "d_1"]		# Weighted UniFrac
+# du <- unifracs[, , "d_UW"]		# Unweighted UniFrac	
+# du <- unifracs[, , "d_VAW"]		# Variance adjusted weighted UniFrac
+# du <- unifracs[, , "d_0"]     	# GUniFrac with alpha 0  
+ du <- unifracs[, , "d_0.5"]   	# GUniFrac with alpha 0.5 
+
+# Hierarchical clustering of the samples into groups based on their pairwise unifrac distances
+hclust_samps <- upgma(du)
+```
+
+
+# PERMANOVA of metadata factors (habitat and colony_position) and their explaining power of the unifrac distance
+```{r}
+# Convert unifrac matrix into dist class
+dist <- as.dist(du, diag = FALSE)
+
+# Check the dimensions of the matrix (should equal n x n samples of interest)
+dim(du)
+
+# format a metadata dataframe for the permanova
+adonis_meta <- meta %>%
+  select(sample_name, species, habitat, colony_ID, colony_position) %>%
+  filter(sample_name %in% rownames(du)) %>% # keep only the samples of interest
+  tibble::column_to_rownames(var = "sample_name") # vegan requires sample_names as row names
+
+# call the permanova test and specify the model factors
+# the below formula tests for an effect of habitat on the ITS2 unifrac distance, and then tests for an effect of colony_position, nested within each habitat
+adonis(dist ~ habitat + habitat/colony_position, data = adonis_meta)
+
+#$aov.tab
+#Permutation: free
+#Number of permutations: 999
+
+#Terms added sequentially (first to last)
+
+#                        Df SumsOfSqs MeanSqs F.Model      R2 Pr(>F)    
+#habitat                  3   23.9341  7.9780 10507.4 0.99712  0.001 ***
+#habitat:colony_position  4    0.0022  0.0006     0.7 0.00009  0.579    
+#Residuals               88    0.0668  0.0008         0.00278           
+#Total                   95   24.0031                 1.00000           
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+# Habitat is significant! For significant factors, need to test the assumption of homogeneity of dispersion
+betadisp <- betadisper(dist, adonis_meta$habitat)
+plot(betadisp) # PCoA; its not very clear because it's very zoomed out, but it looks like the two reef populations have more dispersion than the mangrove populations
+anova(betadisp) # this dispersion is significantly different across habitats, so caution is encouraged in interpreting significance
+
+# Notes: Habitat is significant - so the ITS2 sequence composition, according to pair-wise sample unifrac distances, differ across habitats. However, inner/outer mangrove/reef habitats have significantly different dispersion, which violates the assumption of PERMANOVA (caution to be applied). However if we consider that the mangrove profiles are distinct from reef profiles (see e.g. pie charts), it is likely that the habitat effect is true, and the dispersion differences are due to the within-colony sequence variability in the different populations (due to some colonies having C+B, and others only D). Colony position (shaded vs exposed) nested within each habitat, is not significant, however. Is this because the mangrove habitats show zero differentiation across this factor? 
+
+####
+# Subset to Inner mangrove and perform the test of colony_position on this habitat only
+im_meta <- meta %>%
+  select(sample_name, habitat, colony_position) %>% # select sample_name and the factors of interest
+  filter(sample_name %in% rownames(du)) %>% # keep only the samples of interest
+  filter(habitat == "Inner mangrove") %>% # keep the group of interest
+  tibble::column_to_rownames(var = "sample_name")
+
+# subset the unifrac distance matrix
+im_dist <- dist_subset(dist, rownames(im_meta))
+
+# Test colony_position on inner mangrove only
+#adonis(im_dist ~ colony_position, data = im_meta)
+
+#$aov.tab
+#Permutation: free
+#Number of permutations: 999
+
+#Terms added sequentially (first to last)
+
+#                Df SumsOfSqs    MeanSqs F.Model      R2 Pr(>F)   
+#colony_position  1 0.0025142 0.00251417  3.0863 0.12303  0.006 **
+#Residuals       22 0.0179218 0.00081463         0.87697          
+#Total           23 0.0204359                    1.00000          
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+betadisp <- betadisper(im_dist, im_meta$colony_position)
+plot(betadisp) # there's much more variation in the cryptic areas in the inner mangrove
+anova(betadisp) # p-value = 0.05361; dispersion is non-significant across colony_position, so assumptions of PERMANOVA are met
+
+######
+# Subset to Outer mangrove and perform the test of colony_position on this habitat only
+om_meta <- meta %>%
+  select(sample_name, habitat, colony_position) %>% # select sample_name and the factors of interest
+  filter(sample_name %in% rownames(du)) %>% # keep only the samples of interest
+  filter(habitat == "Outer mangrove") %>% # keep the group of interest
+  tibble::column_to_rownames(var = "sample_name")
+
+# subset the unifrac distance matrix
+om_dist <- dist_subset(dist, rownames(om_meta))
+
+# Test colony_position on Outer mangrove only
+#adonis(om_dist ~ colony_position, data = om_meta)
+
+#$aov.tab
+#Permutation: free
+#Number of permutations: 999
+
+#Terms added sequentially (first to last)
+
+#                Df  SumsOfSqs    MeanSqs F.Model      R2 Pr(>F)
+#colony_position  1 0.00000901 9.0131e-06 0.59381 0.02628  0.541 # p-value > 0.05 so colony_position doesn't significantly affect ITS2 in OM
+#Residuals       22 0.00033393 1.5179e-05         0.97372       
+#Total           23 0.00034294                    1.00000     
+
+betadisp <- betadisper(om_dist, om_meta$colony_position)
+plot(betadisp) # no variation
+anova(betadisp) # p-value = 0.142; dispersion is non-significant across colony_position, so assumptions of PERMANOVA are met
+
+####
+# Subset to Inner reef and perform the test of colony_position on this habitat only
+ir_meta <- meta %>%
+  select(sample_name, habitat, colony_position) %>% # select sample_name and the factors of interest
+  filter(sample_name %in% rownames(du)) %>% # keep only the samples of interest
+  filter(habitat == "Inner reef") %>% # keep the group of interest
+  tibble::column_to_rownames(var = "sample_name")
+
+# subset the unifrac distance matrix
+library(usedist)
+ir_dist <- dist_subset(dist, rownames(ir_meta))
+
+# Test colony_position on Inner reef only
+#adonis(ir_dist ~ colony_position, data = ir_meta)
+
+#$aov.tab
+#Permutation: free
+#Number of permutations: 999
+
+#Terms added sequentially (first to last)
+
+#                Df SumsOfSqs   MeanSqs F.Model      R2 Pr(>F)   
+#colony_position  1 0.0038941 0.0038941  4.7844 0.17863  0.005 ** # p-value < 0.05 so effect of colony_position on ITS2 at IR
+#Residuals       22 0.0179061 0.0008139         0.82137          
+#Total           23 0.0218002                   1.00000          
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+betadisp <- betadisper(ir_dist, ir_meta$colony_position)
+plot(betadisp) # more variation in exposed regions
+anova(betadisp) # p-value = 0.02669 so caution is to be applied, there's significant dispersion which violates PERMANOVA assumptions
+
+####
+# Subset to Outer reef and perform the test of colony_position on this habitat only
+or_meta <- meta %>%
+  select(sample_name, habitat, colony_position) %>% # select sample_name and the factors of interest
+  filter(sample_name %in% rownames(du)) %>% # keep only the samples of interest
+  filter(habitat == "Outer reef") %>% # keep the group of interest
+  tibble::column_to_rownames(var = "sample_name")
+
+# subset the unifrac distance matrix
+or_dist <- dist_subset(dist, rownames(or_meta))
+
+# Test colony_position on Outer reef only
+#adonis(or_dist ~ colony_position, data = or_meta)
+
+#$aov.tab
+#Permutation: free
+#Number of permutations: 999
+
+#Terms added sequentially (first to last)
+
+#                Df SumsOfSqs    MeanSqs F.Model     R2 Pr(>F)
+#colony_position  1 0.0001023 0.00010231  0.1083 0.0049  0.988 # p-value > 0.05 so no significant differences between colony regions
+#Residuals       22 0.0207835 0.00094470         0.9951       
+#Total           23 0.0208858                    1.0000    
+
+betadisp <- betadisper(or_dist, or_meta$colony_position)
+plot(betadisp) # no variation
+anova(betadisp) # p-value = 0.301 so PERMANOVA assumptions are met
+```
+
+## PERMANOVA with just habitat
+```{r}
+# Check the dimensions of the matrix (should equal n x n samples of interest)
+dim(du)
+
+# format a metadata dataframe for the permanova
+adonis_meta <- meta %>%
+  select(sample_name, species, habitat) %>%
+  filter(sample_name %in% rownames(du)) %>% # keep only the samples of interest
+  tibble::column_to_rownames(var = "sample_name") # vegan requires sample_names as row names
+
+# call the permanova test and specify the model factors
+#adonis(dist ~ habitat, data = adonis_meta)
+
+#$aov.tab
+#Permutation: free
+#Number of permutations: 999
+
+#Terms added sequentially (first to last)
+
+#          Df SumsOfSqs MeanSqs F.Model      R2 Pr(>F)    
+#habitat    3    23.934  7.9780   10633 0.99712  0.001 ***
+#Residuals 92     0.069  0.0008         0.00288           
+#Total     95    24.003                 1.00000           
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+betadisp <- betadisper(dist, adonis_meta$habitat)
+plot(betadisp) # very far apart
+anova(betadisp) # p-value =  2.601e-05 *** so caution is to be applied, there's significant dispersion which violates PERMANOVA assumptions
+```
+
+# Post-hoc PERMANOVA
+```{r}
+#TukeyHSD(betadisp) #TukeyHSD.betadisper; see TukeyHSD => results different from pairwise.adonis
+library(devtools)
+#install_github("pmartinezarbizu/pairwiseAdonis/pairwiseAdonis")
+library(pairwiseAdonis)
+pairwise.adonis(dist, factors=adonis_meta$habitat, perm=999)
+pairwise.adonis(dist, factors=adonis_meta$habitat, perm=9999) #p.adjust.method = "bonferroni" by default
+```
+
+# Prepare data for PCoA plots based on merged data from SymPortal
+```{r}
+rd <- sort(list.files("datasets/", recursive = "false", full.names = TRUE))
+ml <- sort(list.files("metadata/", recursive = "false", full.names = TRUE))
+
+rd
+ml
+
+merged_data <- data.frame()
+for(i in 1:length(rd)){
+  seq_path <- paste0(rd[i], "/post_med_seqs/")
+  seq_file <- list.files(seq_path, pattern = "seqs.absolute.abund_and_meta.txt", recursive = FALSE, full.names = TRUE)
+  seqs <- read_tsv(seq_file) %>%
+  filter(!(is.na(sample_name)))
+  
+  meta <- read_csv(ml[i])
+  fasta_file <- list.files(paste0(rd[i], "/post_med_seqs/"), pattern = ".fasta", recursive = FALSE, full.names = TRUE)  
+  fasta <- read_fasta_df(fasta_file)
+  
+  seqs_long <- seqs %>%
+  dplyr::select(sample_name, collection_depth:last_col(), -collection_depth) %>% # Select sample_names and the each column contain sequence count data
+  pivot_longer(-sample_name) %>% # make into long dataframe
+  filter(value > 0) %>% # Remove zero values
+  filter(!(is.na(sample_name))) %>%
+  left_join(., fasta, by = c("name" = "label")) %>%
+  left_join(., meta, by = c("sample_name"))
+  
+  merged_data <- rbind(merged_data, seqs_long)
+}
+
+name_update <- merged_data %>%
+  distinct(name, sequence) %>%
+  group_by(sequence) %>%
+  summarise(duplicates = paste0(name, collapse = '-')) %>%
+  separate(duplicates, into = c("A", "B"), sep = "-") %>%
+  mutate(final_name = case_when(is.na(B) ~ A,
+                                !is.na(as.numeric(str_sub(A, 1, 1))) & is.na(B) ~ A,
+                                !is.na(as.numeric(str_sub(A, 1, 1))) ~ B)) %>%
+  select(sequence, final_name)
+
+merged_data <- merged_data %>%
+  left_join(., name_update) %>%
+  select(-name) %>%
+  dplyr::rename(name = final_name) %>%
+  mutate(name = as.factor(name)) %>%
+  group_by(sample_name, symportal_run_id) %>%
+  mutate(sample_name = paste0(sample_name, "-", cur_group_id())) %>% # prevent sample name duplicates from run to run
+  ungroup()
+```
+
+
+# Add metadata
+```{r}
+# Create a kmer-based pairwise sequence similarity matrix
+kdist <- merged_data %>%
+  select(name, sequence) %>%
+  distinct(name, sequence) %>%
+  deframe() %>%
+  as_dna() %>%
+  dna_to_DNAbin() %>%
+  kdistance(k = 8, residues = "DNA", method = "edgar") %>% # test how different k size alters the interpretation
+  as.matrix()
+# Note - small K = less discriminating power. Large k = more discriminating power but significantly more compute time
+
+# Use heirarchical clustering to create a phylogenetic tree based on the pairwise k-mer distances
+k_tree <- kdist %>% phangorn::upgma()
+
+# Create a wide count table to use in the weighted versions of the unifrac measurements
+seqs_wide <- merged_data %>%
+  select(sample_name, name, value) %>% # need the sample names, the sequence names, and the count data
+  pivot_wider(names_from = name, values_from = value, values_fill = 0) %>% # convert from long to wide
+  tibble::column_to_rownames(var = "sample_name") # sample names need to be column names
+
+# Calculate the unifrac distance
+unidist <- GUniFrac(seqs_wide, k_tree)
+unifracs <- unidist$unifracs
+du <- unifracs[, , "d_0.5"] # GUniFrac with alpha 0.5 
+
+# Hierarchical clustering of the samples into groups based on their pairwise unifrac distances
+hclust_samps <- phangorn::upgma(du)
+s_tree <- ggtree::ggtree(hclust_samps) +
+  scale_x_reverse() +
+  theme(aspect.ratio = 1.8)
+
+s_order <- s_tree$data %>% filter(isTip == TRUE) %>% arrange(y) %>% pull(label)
+```
+
+# Palettes
+```{r}
+genera <- merged_data %>%
+  distinct(name) %>%
+  mutate(genus = case_when(
+    str_sub(name, start = 1, end = 1) == "A" | str_detect(name, "_A") ~ 'Symbiodinium',
+    str_sub(name, start = 1, end = 1) == "B" | str_detect(name, "_B") ~ 'Breviolum',
+    str_sub(name, start = 1, end = 1) == "C" | str_detect(name, "_C") ~ 'Cladocopium',
+    str_sub(name, start = 1, end = 1) == "D" | str_detect(name, "_D") ~ 'Durusdinium',
+    str_sub(name, start = 1, end = 1) == "E" | str_detect(name, "_E") ~ 'Effrenium',
+    str_sub(name, start = 1, end = 1) == "F" | str_detect(name, "_F") ~ 'Fugacium',
+    str_sub(name, start = 1, end = 1) == "G" | str_detect(name, "_G") ~ 'Gerakladium',
+    str_sub(name, start = 1, end = 1) == "A" | str_detect(name, "_A") ~ 'Symbiodinium',
+    str_sub(name, start = 1, end = 1) == "H" | str_detect(name, "_H") ~ 'Halluxium',
+    str_sub(name, start = 1, end = 1) == "I" | str_detect(name, "_I") ~ 'Symbiodinium_I',
+    TRUE ~ "Unknown")) %>%
+  distinct(genus) # If more than 8 genera - need to look at a new palette for the below
+
+n <- length(levels(merged_data$name))
+seq_names <- sort(levels((merged_data$name)))
+
+a <- seq_names[str_sub(seq_names, 1, 1) == "A" | str_detect(seq_names, "_A")]
+b <- seq_names[str_sub(seq_names, 1, 1) == "B" | str_detect(seq_names, "_B")]
+c <- seq_names[str_sub(seq_names, 1, 1) == "C" | str_detect(seq_names, "_C")]
+d <- seq_names[str_sub(seq_names, 1, 1) == "D" | str_detect(seq_names, "_D")]
+#e <- seq_names[str_sub(seq_names, 1, 1) == "E" | str_detect(seq_names, "_E")]
+f <- seq_names[str_sub(seq_names, 1, 1) == "F" | str_detect(seq_names, "_F")]
+g <- seq_names[str_sub(seq_names, 1, 1) == "G" | str_detect(seq_names, "_G")]
+h <- seq_names[str_sub(seq_names, 1, 1) == "H" | str_detect(seq_names, "_H")]
+i <- seq_names[str_sub(seq_names, 1, 1) == "I" | str_detect(seq_names, "_I")]
+
+b_pal <- randomcoloR::randomColor(count = length(b), hue = "purple")
+c_pal <- randomcoloR::randomColor(count = length(c), hue = "green")
+d_pal <- randomcoloR::randomColor(count = length(d), hue = "red")
+f_pal <- randomcoloR::randomColor(count = length(f), hue = "blue")
+
+names(b_pal) <- b
+names(c_pal) <- c
+names(d_pal) <- d
+names(f_pal) <- f
+
+# Merge the palettes and replace the non-profile sequences with grey
+all_pal <- c(c_pal, d_pal, f_pal, b_pal)
+```
+
+```{r}
+totals <- merged_data %>%
+  group_by(sample_name) %>%
+  summarise(total = sum(value))
+```
+
+# Symbiont sequences per site divided by colony position
+```{r}
+merged_data$habitat <- as.factor(merged_data$habitat)
+merged_data$habitat <- factor(merged_data$habitat, levels=c("Outer reef", "Inner reef", "Outer mangrove", "Inner mangrove"))
+
+# Sequences divided by site and colony position
+merged_data$colony_position <- as.factor(merged_data$colony_position)
+
+# Supplementary Figure 8 (zoomed in)
+merged_data %>%
+  mutate(sample_name = fct_relevel(sample_name, s_order)) %>% # reorder sample factor
+  arrange(name) %>%
+  mutate(name = fct_relevel(name, names(all_pal))) %>%
+  ggplot(aes(sample_name, value)) +
+  geom_bar(stat = "identity", aes(fill = name, colour = name), position = "fill") + # turn on this to change to rel abund
+  scale_y_continuous(labels = scales::percent) + # # turn on this to change to rel abund
+  #geom_bar(stat = "identity", aes(fill = name, colour = name)) + # turn off this to change to rel abund
+  #facet_grid(colony_position ~ habitat, scales="free") +
+  facet_wrap(~ habitat + colony_position, ncol=4, scales="free") +
+  theme(aspect.ratio = 1, 
+        legend.position = "none", 
+        #axis.text.y = element_blank(), 
+        axis.text.y = element_text(size = 10),
+        #axis.ticks.y = element_blank(),
+        #axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+        axis.text.x = element_blank(), axis.ticks.x = element_blank(),
+        axis.title.x = element_blank(), axis.title.y = element_blank(),
+        panel.border = element_blank(), panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(), axis.ticks = element_blank()) +
+  scale_fill_manual(values = all_pal) +
+  scale_colour_manual(values = all_pal)
+#ggsave(filename=paste0(ITS2, "/ITS2_seq_colony_position_new", Sys.Date(), ".pdf"), width=20, height=10) 
+ggplotly()
+```
+
+# PCoA plot from symbionts
+```{r}
+dist_meta <- merged_data %>% distinct(sample_name, colony_ID, colony_position, species, habitat)
+distmat <- as.dist(du)
+pcoa <- cmdscale(distmat, eig = TRUE)
+
+xy <- data.frame(pcoa$points) %>% 
+  rownames_to_column(var = "sample_name") %>% 
+  left_join(., dist_meta) %>%
+  mutate(habitat = fct_relevel(habitat, "Outer reef", "Inner reef", "Outer mangrove", "Inner mangrove"))
+
+xy %>%
+  ggplot(aes(X1, X2, fill = habitat)) + 
+  geom_point(alpha = 0.5, shape = 21, size = 3) +
+  scale_fill_manual(values = c("#A6CEE3", "#1F78B4", "#B2DF8A", "#33A02C")) +
+  theme_bw()
+
+# PCoA
+# Supplementary Figure 7
+xy %>%
+  ggplot(aes(X1, X2, fill = habitat, color=habitat, shape = colony_position)) + 
+  geom_point(alpha = 0.7, size = 3) +
+  scale_color_manual(values = c("#A6CEE3", "#1F78B4", "#B2DF8A", "#33A02C")) +
+  scale_shape_manual(values = c(19, 17)) +
+  facet_grid(. ~ habitat, scales="free") +
+  theme_bw()
+#ggsave(filename=paste0(ITS2, "/ITS2_PCoA_hab_col_V2", Sys.Date(), ".pdf"), width=12, height=5) 
+ggplotly()
+
+# Adjust font size and legend position
+xy %>%
+  ggplot(aes(X1, X2, fill = habitat, color = habitat, shape = colony_position)) + 
+  geom_point(alpha = 0.7, size = 3) +
+  scale_color_manual(values = c("#A6CEE3", "#1F78B4", "#B2DF8A", "#33A02C")) +
+  scale_shape_manual(values = c(19, 17)) +
+  facet_grid(. ~ habitat, scales = "free") +
+  labs(
+    fill = "Habitat",     # Change the legend title for the fill aesthetic
+    color = "Habitat",    # Change the legend title for the color aesthetic
+    shape = "Colony position" # Change the legend title for the shape aesthetic
+  ) +
+  theme_bw() +
+  theme(
+    strip.text = element_text(size = 12),   # Facet wrap labels size
+    axis.text.x = element_text(size = 11),  # X-axis labels size
+    axis.text.y = element_text(size = 11),  # Y-axis labels size
+    legend.text = element_text(size = 11),  # Legend text size
+    legend.title = element_text(size = 12),  # Legend title size
+    legend.position = "bottom",
+    legend.box = "vertical"
+  ) 
+#ggsave(filename=paste0(ITS2, "/ITS2_PCoA_hab_col_V2", Sys.Date(), ".pdf"), width=12, height=5) 
+```
+
+# Procrustes rotation
+```{r}
+merged_colony <- merged_data %>%
+  select(-sample_name) %>%
+  filter(colony_ID != "CD") %>%
+  rename(sample_name = "DART_wrong")
+#merged_colony$sample_name <- as.character(merged_colony$sample_name) #convert DART_wrong/sample_name from numeric to character variable
+merged_colony$sample_name <- as.factor(merged_colony$sample_name)
+levels(merged_colony$sample_name)
+merged_colony$sample_name <- factor(merged_colony$sample_name, levels=c("19.1", "20", "21", "22.1", "23", "24", "25.1", "26.1", "26", "28", "29", "30.1","30","31.1","32.1","34","36","36.1","37.1","38.1","39","40.1","41"))
+
+seqs_wide_pr <- merged_colony %>%
+  select(sample_name, name, value) %>% 
+  pivot_wider(names_from = name, values_from = value, values_fn = mean, values_fill = 0) %>% # I added values_fn = mean because we have several values => 4 values/technical replicates per sample_name
+  tibble::column_to_rownames(var = "sample_name")
+
+kdist <- merged_colony %>%
+  select(name, sequence) %>%
+  distinct(name, sequence) %>%
+  deframe() %>%
+  as_dna() %>%
+  dna_to_DNAbin() %>%
+  kdistance(k = 8, residues = "DNA", method = "edgar") %>% # test how different k size alters the interpretation
+  as.matrix()
+# Note - small K = less discriminating power. Large k = more discriminating power but significantly more compute time
+
+# Use hierarchical clustering to create a phylogenetic tree based on the pairwise k-mer distances
+k_tree <- kdist %>% phangorn::upgma()
+
+# Calculate the unifrac distance
+unidist <- GUniFrac(seqs_wide_pr, k_tree)
+unifracs <- unidist$unifracs
+du <- unifracs[, , "d_0.5"] # GUniFrac with alpha 0.5
+dist_du <- as.dist(du, diag=FALSE)
+
+# make sure that the names in the gl.dist.ind object from dart match exactly the names in the unifrac distance object
+# Check if you can do Procrustes ordination on two different distance matrices. Dart is Euclidean, symbiont is unifrac.
+# Names match but different order in distance matrix => is that a problem?
+library(dartR)
+gl5_pr <- readRDS("C:/Users/156010/OneDrive - UTS/Documents/DArTseq - R files/Report-DPoc22-7677/gl5.Rdata")
+matrix <- gl.dist.ind(gl5_pr, method="euclidean", scale=TRUE)
+dist_host <- as.dist(matrix, diag = FALSE)
+
+str(dist_du) # Symbiont
+str(dist_host) # Coral host
+
+library(vegan)
+pr <- procrustes(dist_du, dist_host, symmetric = FALSE) #perform procrustes on the two separate distance matrices
+pr
+summary(pr)
+#plot(pr, type="text")
+plot(pr)
+#ggsave(filename=paste0(ITS2, "/ITS2_Procrustes_", Sys.Date(), ".pdf"), width=10, height=3) 
+# This shows the host PCoA and you see they all point towards the same symbiont communities within reef (top right) and mangrove (bottom left)
+
+# Test for correlation between ordinations
+protest(X = dist_host, Y = dist_du, scores = "sites", permutations = 999)
+### Significant ###
+```
+The protest result indicates that there is a significant correlation between the two ordinations.
+
+
+
+
+
