@@ -210,20 +210,12 @@ A genetic distance between two individuals (=samples, specimens) or between two 
 
 Distances of relevance to population genetics can be calculated for SNP genotype data and SNP presence-absence data using dartR functions gl.dist.ind() and gl.dist.pop().
 
-**Note:** Method = "euclidean" => unscaled Euclidean metric is severely affected by missing values and should be used only for complete data (which is what I have here due to use of gl.impute() function). 
-In gl.dist.ind() you can use method="euclidean", scale=TRUE => then you're using scaled Euclidean distance; see ?gl.dist.ind()
-
 ```{r}
-### Use this for Procrustes ordination
-#(dist_matrix <- gl.dist.ind(gl5, method="euclidean", scale=TRUE)) #calculates various distances between individuals based on allele frequencies; could I use this to say something about clones?
 (D_pop <- gl.dist.pop(gl5, method="euclidean")) #clearly 4 distinct populations right based on the histogram of genetic distances
 
 gl.plot.heatmap(D_pop, 
                 key=TRUE, keysize=1.5, key.title=NA, key.ylab=NA,
                 cexRow=1, cexCol=1, margins=c(10,10), srtCol=45)
-
-#gl.plot.network(D_ind, gl5)
-#gl.plot.network(D_pop) # not sure if I can plot a network for populations
 ```
 
 
