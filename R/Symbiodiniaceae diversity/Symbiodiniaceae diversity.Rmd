@@ -11,14 +11,8 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# Set working directory 
-```{r user_definitions}
-ITS2project <- "~/ITS2_community_analysis"
-setwd(ITS2project)
-```
-
 ```{r}
-# Packages required to analyse this data. If you do not have them, please install them.
+# Packages required to analyse this data
 library(tidyverse)
 library(kmer)
 library(phangorn)
@@ -286,7 +280,6 @@ kdist <- fasta %>%
   dna_to_DNAbin() %>%
   kdistance(k = 7, residues = "DNA", method = "edgar") %>% # test how different k size alters the interpretation
   as.matrix()
-#Note - small K = less discriminating power. Large k = more discriminating power but significantly more compute time
 
 # Use hierarchical clustering to create a phylogenetic tree based on the pairwise k-mer distances
 tree <- kdist %>% phangorn::upgma()
