@@ -23,34 +23,15 @@ library(ggpubr)
 
 ## Set working directory
 ```{r}
-setwd("/Users/chiara/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Abiotic data/Feb 2022 - Feb 2023")
+setwd("../Abiotic data/Feb 2022 - Feb 2023")
 ```
 
 ## Load in data for the Inner Mangrove logger
 ```{r}
-m_log <- read.csv("/Users/chiara/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Abiotic data/Feb 2022 - Feb 2023/2022-2023 Mangrove HOBO_Temp_pH.csv", header=FALSE, comment.char="#", stringsAsFactors=TRUE)
+m_log <- read.csv("../2022-2023 Mangrove HOBO_Temp_pH.csv", header=FALSE, comment.char="#", stringsAsFactors=TRUE)
 
-str(m_log)
-
-# Rename multiple columns using rename()
-m_log <- m_log %>% 
-        dplyr::rename("Date_Time" = "V2",
-               "Temperature" = "V3",
-               "mV" = "V4",
-               "pH_NBS" = "V5",
-               "pH_T" = "V6")
-
-# The time variable isn't at the date format, so time series data won't work. Use library "lubridate" to convert it 
-#m_log$Date_Time <- as.POSIXct(m_log$Date_Time, format = "%Y-%m-%d %H:%M:%S") 
+# The time variable isn't at the date format, so time series data won't work; convert it:
 m_log$Date_Time <- as.POSIXct(m_log$Date_Time, format = "%d/%m/%Y %H:%M") 
-str(m_log)
-
-# Check for NA values in the dataset
-anyNA(m_log)
-anyNA(m_log$Date_Time)
-which(is.na(m_log$Date_Time)) #2022-10-02 02:16:20 is missing for some reason
-m_log$Date_Time[1184] <- as.POSIXct("2022-03-27 02:16:00")
-anyNA(m_log) # no NAs anymore
 
 # Set the range of datetimes (1 year). First few days are omitted from the dataset as logger needs to equilibrate first few days.
 m_start_time <- as.POSIXct("2022-02-10 0:16:20", format = "%Y-%m-%d %H:%M:%S")
@@ -87,9 +68,7 @@ m_se_pH <- m_sd_pH / sqrt(length(m_subset$pH_T))
 
 
 ## Checking if temperature is 25+/-10 in the mangrove
-This is checked in dataframe m_subset where I subsetted the data from 10-02-2022 until 10-02-2023. We tested the accuracy of the HOBO Onset logger in a laboratory setting where we gradually increase temperature and measured the pH. After about 33/34 degrees Celcius, pH starts to decrease quite rapidly. We decided to removed measurements 25+/-8 as we are not sure about the data 8 degrees above and below the calibration temperature.
-
-Eventually we chose for 25 +/- 10 following the manufacturers statement.
+This is checked in dataframe m_subset where I subsetted the data from 10-02-2022 until 10-02-2023. We tested the accuracy of the HOBO Onset logger in a laboratory setting where we gradually increased temperature and measured the pH. After about 33/34 degrees Celcius, pH starts to decrease quite rapidly. We decided to removed measurements 25+/-10 as we are not sure about the accuracy of the data 10 degrees above and below the calibration temperature (following the manufacturer's statement).
 
 ```{r}
 # Create an empty dataframe to store the rows that meet the condition
@@ -105,32 +84,13 @@ for (i in 1:nrow(m_subset)) {
 }
 
 m_temp_table
-```
 
-103 datapoints are outside 25+/-10. This means that the pH value for 103 datapoints in the mangrove is not reliable. Remove those datapoints and make a note in the paper
-
-## Remove 103 datapoints
-```{r}
 # Remove rows in m_temp_table from the dataset m_subset and create new dataset
 m_subset_removed <- m_subset[!(m_subset$V1 %in% m_temp_table$V1),] # .x1. %in% .x2. tests whether the values in x1 are in x2. The ! operator reverses the result 
 str(m_subset_removed)
-
-# If this works the for-loop should give no output! Check:
-anyNA(m_subset_removed)
-
-m_temp_table_removed <- data.frame()
-for (i in 1:nrow(m_subset_removed)) {
-  if (m_subset_removed$Temperature[i] >= 25 + 10 | m_subset_removed$Temperature[i] <= 25 - 10) {
-    m_temp_table_removed <- rbind(m_temp_table_removed, m_subset_removed[i,])
-  }
-}
-
-m_temp_table_removed # It worked!
 ```
-We can see that there are no values that are outside 25 degrees +/-10, so we have removed the datapoints that give an unreliable pH value.
 
-
-### Calculate summary statistics for m_subset_removed
+## Calculate summary statistics for m_subset_removed
 ```{r}
 # Calculate summary statistics for temperature
 m_removed_mean_temp <- mean(m_subset_removed$Temperature, na.rm=TRUE)
@@ -159,25 +119,10 @@ m_removed_se_pH <- m_removed_sd_pH / sqrt(length(m_subset_removed$pH_T))
 # See at which date/time the lowest pH value was recorded
 min_row <- which.min(m_subset_removed$pH_T)
 (min_row_data <- m_subset_removed[min_row,])
-
-
-# Sort the data frame by pH values
-m_subset_removed_sorted <- m_subset_removed[order(m_subset_removed$pH_T), ]
-
-# Get the lowest 10 pH values and their corresponding date/time
-lowest_10 <- head(m_subset_removed_sorted, n = 20)
-
-# View the results
-lowest_10
 ```
 
 ### Visualization mangrove
-No limits=lims needed as this is the subsetted dataset
-
 ```{r}
-library(ggplot2)
-library(RColorBrewer)
-
 ### All data (with data points outside 25 +/- 10 included)
 ylab <- expression("Temperature " ( degree*C))
 (m_temp <- ggplot(m_subset, aes(x=Date_Time, y=Temperature)) +
@@ -229,29 +174,11 @@ ylab <- "pH"
 
 ## Load in data for the Outer Reef logger
 ```{r}
-r_log <- read.csv("/Users/chiara/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Abiotic data/Feb 2022 - Feb 2023/2022-2023 Reef HOBO_Temp_pH.csv", header=FALSE, comment.char="#", stringsAsFactors=TRUE)
+r_log <- read.csv("../2022-2023 Reef HOBO_Temp_pH.csv", header=FALSE, comment.char="#", stringsAsFactors=TRUE)
 
-str(r_log)
-
-# Rename multiple columns using rename()
-# I had a conflict with another package so that rename() didn't work, use dplyr::rename and it worked (here you specifiy which package to use rename from)
-r_log <- r_log %>% 
-        dplyr::rename("Date_Time" = "V2",
-               "Temperature" = "V3",
-               "mV" = "V4",
-               "pH_NBS" = "V5",
-               "pH_T" = "V6")
-
-# The time variable isn't at the date format, so time series data won't work. Use "lubridate" to convert it 
-#r_log$Date_Time <- as.POSIXct(r_log$Date_Time, format = "%Y-%m-%d %H:%M:%S") 
+# The time variable isn't at the date format, so time series data won't work; convert it:
 r_log$Date_Time <- as.POSIXct(r_log$Date_Time, format = "%d/%m/%Y %H:%M") 
 str(r_log)
-
-# Check for NA values in the dataset
-anyNA(r_log) #no NAs in m_log
-which(is.na(r_log$Date_Time)) #NA for date_time 2022-10-02 02:23:51
-r_log$Date_Time[1184] <- as.POSIXct("2022-03-27 02:23:00")
-anyNA(r_log) # no NAs anymore
 
 # Set the range of datetimes (1 year)
 r_start_time <- as.POSIXct("2022-02-10 0:23:51", format = "%Y-%m-%d %H:%M:%S")
@@ -287,7 +214,7 @@ r_se_pH <- r_sd_pH / sqrt(length(r_subset$pH_T))
 ```
 
 
-### Checking if temperature is 25+/-10 in the reef
+## Checking if temperature is 25+/-10 in the reef
 This is checked in dataframe r_subset where I subsetted the data from 10-02-2022 until 10-02-2023. First few days are omitted from the dataset as logger needs to equilibrate first few days.
 
 
@@ -376,10 +303,12 @@ ggarrange(r_temp, m_temp, r_pH, m_pH,
 #ggsave("R_M_Year_all.pdf", width=9, height=5)
 ```
 
-#### Calculate daily averages for mangrove m_subset_removed
+## Calculate daily averages for mangrove m_subset_removed
 With temperature and pH removed 25+/- 10
 ```{r}
-### m_subset_removed
+# m_subset_removed
+head(m_subset_removed)
+
 # Convert Date_Time to Date
 m_subset_removed$Date <- as.Date(m_subset_removed$Date_Time)
 
@@ -393,26 +322,10 @@ write.csv(m_average_temp_per_day, file = "m_average_temp_per_day.csv")
 mean(m_average_temp_per_day$Temperature, na.rm=TRUE)
 max(m_average_temp_per_day$Temperature, na.rm=TRUE)
 min(m_average_temp_per_day$Temperature, na.rm=TRUE)
-
-#### m_subset for all observation outside calibration range as well ####
-# Convert Date_Time to Date
-m_subset$Date <- as.Date(m_subset$Date_Time)
-
-# Calculate average temperature per day
-m_all_average_temp_per_day <- aggregate(Temperature ~ Date, data = m_subset, FUN = mean)
-
-# Print the result
-print(m_all_average_temp_per_day)
-write.csv(m_all_average_temp_per_day, file = "m_all_average_temp_per_day.csv")
-
-mean(m_all_average_temp_per_day$Temperature, na.rm=TRUE)
-max(m_all_average_temp_per_day$Temperature, na.rm=TRUE)
-min(m_all_average_temp_per_day$Temperature, na.rm=TRUE)
 ```
 
-### Daily averages for reef r_subset 
+## Daily averages for reef r_subset 
 ```{r}
-### Reef daily averages
 head(r_subset)
 
 r_subset$Date <- as.Date(r_subset$Date_Time)
@@ -431,11 +344,9 @@ min(r_average_temp_per_day$Temperature, na.rm=TRUE)
 
 ### Statistics for daily averages temperatures
 ```{r}
-daily_t <- read.csv("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Abiotic data/Feb 2022 - Feb 2023/m_r_average_temp_per_day.csv", stringsAsFactors=TRUE)
-
+daily_t <- read.csv("../m_r_average_temp_per_day.csv", stringsAsFactors=TRUE)
 str(daily_t)
 daily_t$Date <- as.POSIXct(daily_t$Date, format = "%d/%m/%Y") #specify format m/d/Y
-str(daily_t)
 
 ggplot(daily_t, aes(y=Temperature, x=Date, color=Habitat)) +
   geom_point() +
@@ -470,7 +381,7 @@ m_subset_removed_15 <- subset(m_subset_removed, Time == "15:16:00")
 #m_subset_removed_max_temp <- aggregate(Temperature ~ as.Date(Date_Time), m_subset_removed_15, max)
 #write.csv(m_subset_removed_15, file = "m_removed_Max_15.csv")
 
-daily_max <- read.csv("/Users/chiara/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Abiotic data/Feb 2022 - Feb 2023/Daily_max_M_R.csv", stringsAsFactors=TRUE)
+daily_max <- read.csv("../Daily_max_M_R.csv", stringsAsFactors=TRUE)
 str(daily_max)
 
 #daily_max$Date_Time <- as.POSIXct(daily_max$Date_Time, format = "%m/%d/%Y %H:%M")
@@ -520,24 +431,9 @@ wilcox.test(Temperature ~ Habitat, data = daily_max)
 ### Mangrove 2
 This logger stopped working in October 2022
 ```{r}
-m_log2 <- read.csv("/Users/chiara/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Abiotic data/Feb 2022 - Feb 2023/2022-2023 Mangrove 2nd logger.csv", header=FALSE, comment.char="#")
-
-str(m_log2)
-
-# Rename multiple columns using rename()
-m_log2 <- m_log2 %>% 
-        dplyr::rename("Date_Time" = "V2",
-               "Temperature" = "V3")
-
-# The time variable isn't at the date format, so time series data won't work. Use "lubridate" to convert it 
+m_log2 <- read.csv("../2022-2023 Mangrove 2nd logger.csv", header=FALSE, comment.char="#")
 m_log2$Date_Time <- as.POSIXct(m_log2$Date_Time, format = "%d/%m/%Y %H:%M") #specify format m/d/Y
 str(m_log2)
-
-anyNA(m_log2)
-anyNA(m_log2$Date_Time)
-which(is.na(m_log2$Date_Time)) #NA for date_time 2022-10-02 02:23:51
-m_log2$Date_Time[5722] <- as.POSIXct("2022-10-02 02:36:00")
-anyNA(m_log2) # remaining NAs in beginning of dataset that will be filtered out below
 
 # Set the range of datetimes (mangrove logger stopped on 2022-10-22)
 m_start_time2 <- as.POSIXct("2022-02-10 00:36:00", format = "%Y-%m-%d %H:%M:%S")
@@ -601,25 +497,9 @@ ylab <- expression("Temperature " ( degree*C))
 
 ### Reef 2
 ```{r}
-r_log2 <- read.csv("/Users/chiara/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Abiotic data/Feb 2022 - Feb 2023/2022-2023 Reef 2nd logger.csv", header=FALSE, comment.char="#")
-
-str(r_log2)
-
-# Rename multiple columns using rename()
-r_log2 <- r_log2 %>% 
-        dplyr::rename("Date_Time" = "V2",
-               "Temperature" = "V3",
-               "Light_Intensity" = "V4")
-
-# The time variable isn't at the date format, so time series data won't work. Use "lubridate" to convert it 
+r_log2 <- read.csv("../2022-2023 Reef 2nd logger.csv", header=FALSE, comment.char="#")
 r_log2$Date_Time <- as.POSIXct(r_log2$Date_Time, format = "%d/%m/%Y %H:%M") #specify format m/d/Y
 str(r_log2)
-
-anyNA(r_log2)
-anyNA(r_log2$Date_Time)
-which(is.na(r_log2$Date_Time)) #NA for date_time 2022-10-02 02:23:51
-r_log2$Date_Time[1186] <- as.POSIXct("2022-03-27 02:35:00")
-anyNA(r_log2) # remaining NAs in beginning of dataset that will be filtered out below
 
 # Set the range of datetimes
 r_start_time2 <- as.POSIXct("2022-02-10 00:35:00", format = "%Y-%m-%d %H:%M:%S")
