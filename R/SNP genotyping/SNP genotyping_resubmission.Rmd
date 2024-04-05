@@ -64,9 +64,9 @@ gl <- readRDS("gl_dartR.Rdata")
 ## Filtering data
 ### Filter data step 1: checking original data based on Symbiodiniaceae genome 
 ```{r}
-gl.blast(gl, "../Sym_genomes/symC_scaffold_40.fasta", verbose = 5) #NULL
-gl.blast(gl, "../Sym_genomes/102_symbd_genome_scaffold.fa", verbose = 5) #NULL
-gl.blast(gl, "../Sym_genomes/Breviolum_minutum.v1.0.genome.fa", verbose = 5)
+gl.blast(gl, "../symC_scaffold_40.fasta", verbose = 5) #NULL
+gl.blast(gl, "../102_symbd_genome_scaffold.fa", verbose = 5) #NULL
+gl.blast(gl, "../Breviolum_minutum.v1.0.genome.fa", verbose = 5)
    #   qseqid                      sacc                    stitle                                                            qseq
    # 2  31054 scaffold1595.1|size109920 scaffold1595.1|size109920 GACTAACTGACTAGCTAACTGACTAACTTATCGAC---CTACTGACTGACTGATTGTTTGACT
    # sseq nident mismatch pident length   evalue bitscore qstart qend sstart  send
@@ -74,13 +74,13 @@ gl.blast(gl, "../Sym_genomes/Breviolum_minutum.v1.0.genome.fa", verbose = 5)
    # gapopen gaps qlen   slen PercentageOverlap
    # 2       1    3   69 110003         0.9130435
 
-gl.blast(gl, "../Sym_genomes/Cladocopium_goreaui_Genome.Scaffolds.fasta", verbose = 5) #NULL
-gl.blast(gl, "../Sym_genomes/Fugacium_kawagutii_V1_genome_scaffold.fasta", verbose = 5) #NULL
-gl.blast(gl, "../Sym_genomes/Fugacium_kawagutii_V2_genome_Scaffolds.fasta", verbose = 5) #NULL
-gl.blast(gl, "../Sym_genomes/Fugacium_kawagutii_V3_genome_scaffold.fasta", verbose = 5) #NULL
-gl.blast(gl, "../Sym_genomes/Genome.Scaffolds.fasta", verbose = 5) #NULL
-gl.blast(gl, "../Sym_genomes/symA3_scaffold_37.fasta", verbose = 5) #NULL
-gl.blast(gl, "../Sym_genomes/symbB.v1.0.genome.fa", verbose = 5)
+gl.blast(gl, "../Cladocopium_goreaui_Genome.Scaffolds.fasta", verbose = 5) #NULL
+gl.blast(gl, "../Fugacium_kawagutii_V1_genome_scaffold.fasta", verbose = 5) #NULL
+gl.blast(gl, "../Fugacium_kawagutii_V2_genome_Scaffolds.fasta", verbose = 5) #NULL
+gl.blast(gl, "../Fugacium_kawagutii_V3_genome_scaffold.fasta", verbose = 5) #NULL
+gl.blast(gl, "../Genome.Scaffolds.fasta", verbose = 5) #NULL
+gl.blast(gl, "../symA3_scaffold_37.fasta", verbose = 5) #NULL
+gl.blast(gl, "../symbB.v1.0.genome.fa", verbose = 5)
      #   qseqid                      sacc                    stitle                                                            qseq
      # 2  31054 scaffold1595.1|size109920 scaffold1595.1|size109920 GACTAACTGACTAGCTAACTGACTAACTTATCGAC---CTACTGACTGACTGATTGTTTGACT
      # sseq nident mismatch pident length   evalue bitscore qstart qend sstart  send
@@ -88,12 +88,12 @@ gl.blast(gl, "../Sym_genomes/symbB.v1.0.genome.fa", verbose = 5)
      # gapopen gaps qlen   slen PercentageOverlap
      # 2       1    3   69 110003         0.9130435
 
-gl.blast(gl, "../Sym_genomes/SymbC1.MITO_seqs.fa", verbose = 5) #NULL
-gl.blast(gl, "../Sym_genomes/Symbiodinium_microadriacticum_genome.scaffold.fasta", verbose = 5) #NULL 
+gl.blast(gl, "../SymbC1.MITO_seqs.fa", verbose = 5) #NULL
+gl.blast(gl, "../Symbiodinium_microadriacticum_genome.scaffold.fasta", verbose = 5) #NULL 
 
 #checking filtered data against on Symbiodiniaceae genome 
-gl.blast(gl5, "../Sym_genomes/Breviolum_minutum.v1.0.genome.fa", verbose = 5)
-gl.blast(gl5, "../Sym_genomes/symbB.v1.0.genome.fa", verbose = 5)
+gl.blast(gl5, "../Breviolum_minutum.v1.0.genome.fa", verbose = 5)
+gl.blast(gl5, "../symbB.v1.0.genome.fa", verbose = 5)
 
 #NOTE: NO SYMBIONT CONTAMINATION ON FILTERED DATA.
 ```
