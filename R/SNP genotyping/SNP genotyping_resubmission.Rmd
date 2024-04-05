@@ -31,8 +31,7 @@ library(ggplot2)
 
 ### Set working directory
 ```{r}
-#setwd("/Users/sagefitzgerald/Desktop/Post_PHD/Chiara_MS/OneDrive_1_13-12-2023")
-setwd("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/SNP genotyping/Report-DPoc22-7677")
+setwd("../SNP genotyping/Report-DPoc22-7677")
 ```
 
 
@@ -209,10 +208,8 @@ gl5 <- gl.filter.monomorphs(gl5, verbose = 3)
 gl5 <- gl.recalc.metrics(gl5, verbose = 3)
 
 saveRDS(gl5, file="gl5_CLONE_removed.Rdata")
-gl5 <- readRDS("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/SNP genotyping/Report-DPoc22-7677/gl5_CLONE_removed.Rdata")
-gl5 # slightly different number of loci so work with OG that has clone removed
 
-### OG THAT SAGE PERFORMED STRUCTURE ON!
+### Genlight object that STRUCTURE was performed on
 gl5 <- readRDS("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/SNP genotyping/Report-DPoc22-7677/gl5_CLONE_removed_OG.Rdata")
 gl5
 indNames(gl5)
@@ -318,53 +315,14 @@ pca_model4 <- gl.print.reports(23)
 # run Fst on original sites (Model 1)
 (Fst_p1 <- gl.fst.pop(gl5, nboots = 999))
 
-#$Fsts
-#               Inner mangrove Outer mangrove Inner reef Outer reef
-#Inner mangrove             NA             NA         NA         NA
-#Outer mangrove     0.01720092             NA         NA         NA
-#Inner reef         0.62840786      0.7644264         NA         NA
-#Outer reef         0.33254677      0.4920800  0.1543623         NA
-
 # run Fst between 2x populations (Model 2)
 (Fst_p2 <- gl.fst.pop(glp2, nboots = 999))
-
-#$Fsts
-#           Mangrove_p Reef_p
-#Mangrove_p         NA     NA
-#Reef_p      0.5290652     NA
-
-#$Pvalues
-#           Mangrove_p Reef_p
-#Mangrove_p         NA     NA
-#Reef_p  
 
 # run Fst between 3x populations (Model 3)
 (Fst_p3 <- gl.fst.pop(glp3, nboots = 999))
 
-#$Fsts
-#           Mangrove_p   hybrids Reef_p
-#Mangrove_p         NA        NA     NA
-#hybrids     0.4987422        NA     NA
-#Reef_p      0.8104767 0.4052258     NA
-
-#$Pvalues
-#           Mangrove_p hybrids Reef_p
-#Mangrove_p         NA      NA     NA
-#hybrids             0      NA     NA
-#Reef_p              0       0     NA
-
 # run Fst between 2x populations (hybrids removed) (Model 4)
 (Fst_p4 <- gl.fst.pop(glp4, nboots = 999))
-
-#$Fsts
-#           Mangrove_p Reef_p
-#Mangrove_p         NA     NA
-#Reef_p      0.8104767     NA
-
-#$Pvalues
-#           Mangrove_p Reef_p
-#Mangrove_p         NA     NA
-#Reef_p              0     NA
 ```
 
 
@@ -429,7 +387,7 @@ amova_sig_m4
 
 ### Convert to STRUCTURE format (if performing STRUCTURE outside of R)
 ```{r}
-#gl2structure(gl5, outpath = "/Users/sagefitzgerald/Desktop/Post_PHD/Chiara_MS/STRUCTURE")
+#gl2structure(gl5, outpath = "..")
 
 #nLoc(gl5) #number of loci
 # How many loci: 2148
@@ -459,7 +417,7 @@ packageDescription("pophelper", fields="Version")
 For your STRUCTURE results, make sure all runs for all K are put in on directory. Mine are all in 'results_all'.
 
 ```{r}
-setwd("/Users/Chiara/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/SNP genotyping/STRUCTURE_pop/results_all")
+setwd("../SNP genotyping/STRUCTURE_pop/results_all")
 
 # import data from directory
 sfiles <- c("gl_k1_run1_f", "gl_k1_run2_f", "gl_k1_run3_f", "gl_k1_run4_f", "gl_k1_run5_f", ##K=1, 5 runs, file 1-5
@@ -542,7 +500,7 @@ I choose to put results "mlist" in .csv file so I can easily adjust the figure i
 
 ### STRUCTURE plot
 ```{r}
-str_results <- read.csv("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/SNP genotyping/STRUCTURE_pop/structure_results2.csv", stringsAsFactors=TRUE)
+str_results <- read.csv("../SNP genotyping/STRUCTURE_pop/structure_results2.csv", stringsAsFactors=TRUE)
 
 str(str_results)
 str_results$name_DArT_wrong <- as.factor(str_results$name_DArT_wrong)
@@ -554,7 +512,8 @@ str_results$name_DArT_wrong <- factor(str_results$name_DArT_wrong, levels=c(
 levels(str_results$name_DArT_wrong)
 str_results$site <- factor(str_results$site, levels=c("Outer reef", "Inner reef", "Outer mangrove", "Inner mangrove"))
 
-# Figure STRUCTURE adjusted in R so no need to export and edit in Inkscape
+## Figure 2A
+# Figure STRUCTURE adjusted in R so no need to export and edit in Adobe Illustrator
 ggplot(str_results, aes(fill=cluster, y=value, x=name_DArT_wrong)) +
   geom_bar(position="fill", stat="identity") +
   facet_wrap(~ site, nrow = 1, scales = "free_x") +
@@ -574,11 +533,11 @@ ggplot(str_results, aes(fill=cluster, y=value, x=name_DArT_wrong)) +
         axis.ticks = element_blank(),
         strip.text.x = element_text(size = 11, face="bold")
         )
-#ggsave("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/SNP genotyping/STRUCTURE_pop/StructurePlot_K2_NEW.pdf", width = 9, height = 3) #nrow
+#ggsave("StructurePlot_K2_NEW.pdf", width = 9, height = 3) #nrow
 ```
 
 ```{r}
-str_results_pie <- read.csv("~/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/SNP genotyping/STRUCTURE_pop/structure_results_pie.csv", stringsAsFactors=TRUE)
+str_results_pie <- read.csv(../SNP genotyping/STRUCTURE_pop/structure_results_pie.csv", stringsAsFactors=TRUE)
 str(str_results_pie)
 str_results_pie$Cluster <- as.factor(str_results_pie$Cluster)
 str_results_pie$pop <- as.factor(str_results_pie$pop)
