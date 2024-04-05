@@ -9,9 +9,16 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## To do
-* Calculate average temp and pH per month for reef and mangrove => in table
-* Calculate average temp and pH per day => perhaps better to plot due to so many data points
+# Libraries
+```{r}
+library(plyr)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(RColorBrewer)
+library(car)
+library(ggpubr)
+```
 
 
 ## Set working directory
@@ -19,14 +26,12 @@ knitr::opts_chunk$set(echo = TRUE)
 setwd("/Users/chiara/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Abiotic data/Feb 2022 - Feb 2023")
 ```
 
-
-## Mangrove data
+## Load in data for the Inner Mangrove logger
 ```{r}
 m_log <- read.csv("/Users/chiara/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Abiotic data/Feb 2022 - Feb 2023/2022-2023 Mangrove HOBO_Temp_pH.csv", header=FALSE, comment.char="#", stringsAsFactors=TRUE)
 
 str(m_log)
 
-library(dplyr)
 # Rename multiple columns using rename()
 m_log <- m_log %>% 
         dplyr::rename("Date_Time" = "V2",
@@ -35,8 +40,7 @@ m_log <- m_log %>%
                "pH_NBS" = "V5",
                "pH_T" = "V6")
 
-# The time variable isn't at the date format, so time series data won't work. Use "lubridate" to convert it 
-library(lubridate)
+# The time variable isn't at the date format, so time series data won't work. Use library "lubridate" to convert it 
 #m_log$Date_Time <- as.POSIXct(m_log$Date_Time, format = "%Y-%m-%d %H:%M:%S") 
 m_log$Date_Time <- as.POSIXct(m_log$Date_Time, format = "%d/%m/%Y %H:%M") 
 str(m_log)
@@ -82,7 +86,7 @@ m_se_pH <- m_sd_pH / sqrt(length(m_subset$pH_T))
 ```
 
 
-### Checking if temperature is 25+/-10 in the mangrove
+## Checking if temperature is 25+/-10 in the mangrove
 This is checked in dataframe m_subset where I subsetted the data from 10-02-2022 until 10-02-2023. We tested the accuracy of the HOBO Onset logger in a laboratory setting where we gradually increase temperature and measured the pH. After about 33/34 degrees Celcius, pH starts to decrease quite rapidly. We decided to removed measurements 25+/-8 as we are not sure about the data 8 degrees above and below the calibration temperature.
 
 Eventually we chose for 25 +/- 10 following the manufacturers statement.
@@ -223,7 +227,7 @@ ylab <- "pH"
 ```
 
 
-## Reef data 
+## Load in data for the Outer Reef logger
 ```{r}
 r_log <- read.csv("/Users/chiara/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Abiotic data/Feb 2022 - Feb 2023/2022-2023 Reef HOBO_Temp_pH.csv", header=FALSE, comment.char="#", stringsAsFactors=TRUE)
 
@@ -239,7 +243,6 @@ r_log <- r_log %>%
                "pH_T" = "V6")
 
 # The time variable isn't at the date format, so time series data won't work. Use "lubridate" to convert it 
-library(lubridate)
 #r_log$Date_Time <- as.POSIXct(r_log$Date_Time, format = "%Y-%m-%d %H:%M:%S") 
 r_log$Date_Time <- as.POSIXct(r_log$Date_Time, format = "%d/%m/%Y %H:%M") 
 str(r_log)
@@ -373,6 +376,146 @@ ggarrange(r_temp, m_temp, r_pH, m_pH,
 #ggsave("R_M_Year_all.pdf", width=9, height=5)
 ```
 
+#### Calculate daily averages for mangrove m_subset_removed
+With temperature and pH removed 25+/- 10
+```{r}
+### m_subset_removed
+# Convert Date_Time to Date
+m_subset_removed$Date <- as.Date(m_subset_removed$Date_Time)
+
+# Calculate average temperature per day
+m_average_temp_per_day <- aggregate(Temperature ~ Date, data = m_subset_removed, FUN = mean)
+
+# Print the result
+print(m_average_temp_per_day)
+write.csv(m_average_temp_per_day, file = "m_average_temp_per_day.csv")
+
+mean(m_average_temp_per_day$Temperature, na.rm=TRUE)
+max(m_average_temp_per_day$Temperature, na.rm=TRUE)
+min(m_average_temp_per_day$Temperature, na.rm=TRUE)
+
+#### m_subset for all observation outside calibration range as well ####
+# Convert Date_Time to Date
+m_subset$Date <- as.Date(m_subset$Date_Time)
+
+# Calculate average temperature per day
+m_all_average_temp_per_day <- aggregate(Temperature ~ Date, data = m_subset, FUN = mean)
+
+# Print the result
+print(m_all_average_temp_per_day)
+write.csv(m_all_average_temp_per_day, file = "m_all_average_temp_per_day.csv")
+
+mean(m_all_average_temp_per_day$Temperature, na.rm=TRUE)
+max(m_all_average_temp_per_day$Temperature, na.rm=TRUE)
+min(m_all_average_temp_per_day$Temperature, na.rm=TRUE)
+```
+
+### Daily averages for reef r_subset 
+```{r}
+### Reef daily averages
+head(r_subset)
+
+r_subset$Date <- as.Date(r_subset$Date_Time)
+
+# Calculate average temperature per day
+r_average_temp_per_day <- aggregate(Temperature ~ Date, data = r_subset, FUN = mean)
+
+# Print the result
+print(r_average_temp_per_day)
+write.csv(r_average_temp_per_day, file = "r_average_temp_per_day.csv")
+
+mean(r_average_temp_per_day$Temperature, na.rm=TRUE)
+max(r_average_temp_per_day$Temperature, na.rm=TRUE)
+min(r_average_temp_per_day$Temperature, na.rm=TRUE)
+```
+
+### Statistics for daily averages temperatures
+```{r}
+daily_t <- read.csv("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Abiotic data/Feb 2022 - Feb 2023/m_r_average_temp_per_day.csv", stringsAsFactors=TRUE)
+
+str(daily_t)
+daily_t$Date <- as.POSIXct(daily_t$Date, format = "%d/%m/%Y") #specify format m/d/Y
+str(daily_t)
+
+ggplot(daily_t, aes(y=Temperature, x=Date, color=Habitat)) +
+  geom_point() +
+  geom_line()
+hist(daily_t$Temperature)
+
+# Shapiro test
+shapiro.test(daily_t$Temperature)
+shapiro.test(daily_t$Temperature[daily_t$Habitat == "Mangrove"])
+shapiro.test(daily_t$Temperature[daily_t$Habitat == "Reef"])
+
+#Levene test
+leveneTest(Temperature ~ Habitat, data=daily_t)
+
+# Create a boxplot of Av_temp by Habitat
+boxplot(Temperature ~ Habitat, data = daily_t, 
+        xlab = "Habitat", ylab = "Av_temp", 
+        main = "Boxplot of Av_temp by Habitat")
+
+wilcox.test(Temperature ~ Habitat, data = daily_t)
+```
+
+### Statistics for daily maximum temperature
+```{r}
+r_subset$Time <- format(r_subset$Date_Time, "%H:%M:%S")
+r_subset_15 <- subset(r_subset, Time == "15:23:00")
+#r_max_temp <- aggregate(Temperature ~ as.Date(Date_Time), r_subset_15, max)
+#write.csv(r_subset_15, file = "r_Max_15.csv")
+
+m_subset_removed$Time <- format(m_subset_removed$Date_Time, "%H:%M:%S")
+m_subset_removed_15 <- subset(m_subset_removed, Time == "15:16:00")
+#m_subset_removed_max_temp <- aggregate(Temperature ~ as.Date(Date_Time), m_subset_removed_15, max)
+#write.csv(m_subset_removed_15, file = "m_removed_Max_15.csv")
+
+daily_max <- read.csv("/Users/chiara/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Abiotic data/Feb 2022 - Feb 2023/Daily_max_M_R.csv", stringsAsFactors=TRUE)
+str(daily_max)
+
+#daily_max$Date_Time <- as.POSIXct(daily_max$Date_Time, format = "%m/%d/%Y %H:%M")
+daily_max$Date_Time <- as.POSIXct(daily_max$Date_Time, format = "%d/%m/%Y %H:%M")
+str(daily_max)
+
+# Mean peak temperature and SEs
+# Calculate mean temperature for each habitat
+mean_temperatures <- aggregate(daily_max$Temperature, by = list(daily_max$Habitat), mean)
+
+# Calculate standard errors for each habitat using SEM formula
+sem_temperatures <- tapply(daily_max$Temperature, daily_max$Habitat, function(x) sd(x)/sqrt(length(x)))
+
+# Combine mean and standard error into a data frame
+habitat_summary <- data.frame(Habitat = mean_temperatures$Group.1,
+                              Mean_Temperature = mean_temperatures$x,
+                              Standard_Error = sem_temperatures)
+
+# Print the summary
+print(habitat_summary)
+
+ggplot(daily_max, aes(y=Temperature, x=Date_Time, color=Habitat)) +
+  geom_point() +
+  geom_line()
+
+ggplot(daily_max, aes(y=pH_T, x=Date_Time, color=Habitat)) +
+  geom_point() +
+  geom_line()
+
+#Shapiro test
+shapiro.test(daily_max$Temperature)
+####not passed#### 
+
+#Levene test
+leveneTest(Temperature ~ Habitat, data=daily_max)
+####not passed####
+
+# Perform two-sample t-test on max_temp by Habitat
+#t.test(Temperature ~ Habitat, data = daily_max)
+wilcox.test(Temperature ~ Habitat, data = daily_max)
+
+# Perform two-sample t-test on max_pH_T by Habitat
+#t.test(pH_T ~ Habitat, data = daily_max)
+```
+
 ## Data from second set of loggers
 ### Mangrove 2
 This logger stopped working in October 2022
@@ -381,14 +524,12 @@ m_log2 <- read.csv("/Users/chiara/Library/Mobile Documents/com~apple~CloudDocs/D
 
 str(m_log2)
 
-library(dplyr)
 # Rename multiple columns using rename()
 m_log2 <- m_log2 %>% 
         dplyr::rename("Date_Time" = "V2",
                "Temperature" = "V3")
 
 # The time variable isn't at the date format, so time series data won't work. Use "lubridate" to convert it 
-library(lubridate)
 m_log2$Date_Time <- as.POSIXct(m_log2$Date_Time, format = "%d/%m/%Y %H:%M") #specify format m/d/Y
 str(m_log2)
 
@@ -464,7 +605,6 @@ r_log2 <- read.csv("/Users/chiara/Library/Mobile Documents/com~apple~CloudDocs/D
 
 str(r_log2)
 
-library(dplyr)
 # Rename multiple columns using rename()
 r_log2 <- r_log2 %>% 
         dplyr::rename("Date_Time" = "V2",
@@ -547,152 +687,4 @@ ggsave("Combined loggers.pdf", width=10, height=5)
 ```
 
 
-#### Calculate daily averages for mangrove m_subset_removed
-With temperature and pH removed 25+/- 10
-```{r}
-### m_subset_removed
-# Convert Date_Time to Date
-m_subset_removed$Date <- as.Date(m_subset_removed$Date_Time)
-
-# Calculate average temperature per day
-m_average_temp_per_day <- aggregate(Temperature ~ Date, data = m_subset_removed, FUN = mean)
-
-# Print the result
-print(m_average_temp_per_day)
-write.csv(m_average_temp_per_day, file = "m_average_temp_per_day.csv")
-
-mean(m_average_temp_per_day$Temperature, na.rm=TRUE)
-max(m_average_temp_per_day$Temperature, na.rm=TRUE)
-min(m_average_temp_per_day$Temperature, na.rm=TRUE)
-
-#### m_subset for all observation outside calibration range as well ####
-# Convert Date_Time to Date
-m_subset$Date <- as.Date(m_subset$Date_Time)
-
-# Calculate average temperature per day
-m_all_average_temp_per_day <- aggregate(Temperature ~ Date, data = m_subset, FUN = mean)
-
-# Print the result
-print(m_all_average_temp_per_day)
-write.csv(m_all_average_temp_per_day, file = "m_all_average_temp_per_day.csv")
-
-mean(m_all_average_temp_per_day$Temperature, na.rm=TRUE)
-max(m_all_average_temp_per_day$Temperature, na.rm=TRUE)
-min(m_all_average_temp_per_day$Temperature, na.rm=TRUE)
-```
-
-
-#### Daily averages for reef r_subset 
-```{r}
-### Reef daily averages
-head(r_subset)
-
-r_subset$Date <- as.Date(r_subset$Date_Time)
-
-# Calculate average temperature per day
-r_average_temp_per_day <- aggregate(Temperature ~ Date, data = r_subset, FUN = mean)
-
-# Print the result
-print(r_average_temp_per_day)
-write.csv(r_average_temp_per_day, file = "r_average_temp_per_day.csv")
-
-mean(r_average_temp_per_day$Temperature, na.rm=TRUE)
-max(r_average_temp_per_day$Temperature, na.rm=TRUE)
-min(r_average_temp_per_day$Temperature, na.rm=TRUE)
-```
-
-### Two Sample t-test Daily averages
-
-```{r}
-daily_t <- read.csv("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Abiotic data/Feb 2022 - Feb 2023/m_r_average_temp_per_day.csv", stringsAsFactors=TRUE)
-
-str(daily_t)
-daily_t$Date <- as.POSIXct(daily_t$Date, format = "%d/%m/%Y") #specify format m/d/Y
-str(daily_t)
-
-ggplot(daily_t, aes(y=Temperature, x=Date, color=Habitat)) +
-  geom_point() +
-  geom_line()
-hist(daily_t$Temperature)
-
-# Shapiro test
-shapiro.test(daily_t$Temperature)
-shapiro.test(daily_t$Temperature[daily_t$Habitat == "Mangrove"])
-shapiro.test(daily_t$Temperature[daily_t$Habitat == "Reef"])
-
-library(car)
-#Levene test
-leveneTest(Temperature ~ Habitat, data=daily_t)
-
-# Create a boxplot of Av_temp by Habitat
-boxplot(Temperature ~ Habitat, data = daily_t, 
-        xlab = "Habitat", ylab = "Av_temp", 
-        main = "Boxplot of Av_temp by Habitat")
-
-wilcox.test(Temperature ~ Habitat, data = daily_t)
-```
-
-### Daily maximum
-```{r}
-r_subset$Time <- format(r_subset$Date_Time, "%H:%M:%S")
-r_subset_15 <- subset(r_subset, Time == "15:23:00")
-#r_max_temp <- aggregate(Temperature ~ as.Date(Date_Time), r_subset_15, max)
-#write.csv(r_subset_15, file = "r_Max_15.csv")
-
-m_subset_removed$Time <- format(m_subset_removed$Date_Time, "%H:%M:%S")
-m_subset_removed_15 <- subset(m_subset_removed, Time == "15:16:00")
-#m_subset_removed_max_temp <- aggregate(Temperature ~ as.Date(Date_Time), m_subset_removed_15, max)
-#write.csv(m_subset_removed_15, file = "m_removed_Max_15.csv")
-
-daily_max <- read.csv("/Users/chiara/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Abiotic data/Feb 2022 - Feb 2023/Daily_max_M_R.csv", stringsAsFactors=TRUE)
-str(daily_max)
-
-library(lubridate)
-#daily_max$Date_Time <- as.POSIXct(daily_max$Date_Time, format = "%m/%d/%Y %H:%M")
-daily_max$Date_Time <- as.POSIXct(daily_max$Date_Time, format = "%d/%m/%Y %H:%M")
-str(daily_max)
-
-# Mean peak temperature and SEs
-library(plyr)
-library(dplyr)
-
-# Calculate mean temperature for each habitat
-mean_temperatures <- aggregate(daily_max$Temperature, by = list(daily_max$Habitat), mean)
-
-# Calculate standard errors for each habitat using SEM formula
-sem_temperatures <- tapply(daily_max$Temperature, daily_max$Habitat, function(x) sd(x)/sqrt(length(x)))
-
-# Combine mean and standard error into a data frame
-habitat_summary <- data.frame(Habitat = mean_temperatures$Group.1,
-                              Mean_Temperature = mean_temperatures$x,
-                              Standard_Error = sem_temperatures)
-
-# Print the summary
-print(habitat_summary)
-
-
-ggplot(daily_max, aes(y=Temperature, x=Date_Time, color=Habitat)) +
-  geom_point() +
-  geom_line()
-
-ggplot(daily_max, aes(y=pH_T, x=Date_Time, color=Habitat)) +
-  geom_point() +
-  geom_line()
-
-#Shapiro test
-shapiro.test(daily_max$Temperature)
-####not passed#### 
-
-#Levene test
-library(car)
-leveneTest(Temperature ~ Habitat, data=daily_max)
-####not passed####
-
-# Perform two-sample t-test on max_temp by Habitat
-#t.test(Temperature ~ Habitat, data = daily_max)
-wilcox.test(Temperature ~ Habitat, data = daily_max)
-
-# Perform two-sample t-test on max_pH_T by Habitat
-#t.test(pH_T ~ Habitat, data = daily_max)
-```
 
