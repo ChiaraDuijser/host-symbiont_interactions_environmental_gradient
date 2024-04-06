@@ -781,15 +781,15 @@ The second principal component accounted for 20.1% of the total variance, with P
 
 ### PCAs with clone removed for population and site
 ```{r}
-str(dark_params_NOut)
+dark_params_NOut_clonerem <- dark_params_NOut
 
-# Remove the clones from the dataset that is not yet normalized
-dark_params_NOut <- dark_params_NOut[!(dark_params_NOut$sample_id %in% c("5", "6", "7", "8")), ]
+# Remove clones from the dataset that is not yet normalized
+dark_params_NOut_clonerem <- dark_params_NOut_clonerem[!(dark_params_NOut_clonerem$sample_id %in% c("5", "6", "7", "8")), ]
 
-### CLONE REMOVAL PCA ###  
+## CLONE REMOVAL PCA ###  
 ### Normalization ###
 # apply bestNormalize heuristics
-  params_bns_clonerem <- dark_params_NOut #bn = bestnormalize, s added to differentiate between Matts and this code
+  params_bns_clonerem <- dark_params_NOut_clonerem #bn = bestnormalize, s added to differentiate between Matts and this code
 
   inst_transformations <- data.frame()
   for(i in 7:ncol(params_bns_clonerem)){ #i in 6 => 6 means that from column 6, R is going to normalize the values, so from FqFm until the end of all columns
@@ -822,15 +822,15 @@ scrs_params_cr <- as.data.frame(scores(pca, display = "species")) %>% # Extract 
   rownames_to_column(var = "dark_params_NOut")
 
 # create plot dataframe
-dark_params_NOut$curve_id <- as.character(dark_params_NOut$curve_id)
-plot_df_cr <- left_join(dark_params_NOut, scrs_samples_cr) #column sample_id in common; will be the first column in new dataset
+dark_params_NOut_clonerem$curve_id <- as.character(dark_params_NOut_clonerem$curve_id)
+plot_df_cr <- left_join(dark_params_NOut_clonerem, scrs_samples_cr) #column sample_id in common; will be the first column in new dataset
 
 (p <- ggplot(plot_df_cr, aes(x = PC1, y = PC2)) +
   geom_point(aes(fill = population, color=population), size = 4, alpha=1.0) +
   geom_segment(data = scrs_params_cr, aes(x = 0, xend = PC1, y = 0, yend = PC2), 
                size = 0.5, arrow = arrow(length = unit(0.25, "cm")), colour = "grey") +
   geom_text(data = scrs_params_cr, aes(x = PC1, y = PC2, label = dark_params_NOut), size = 4) +
-    geom_text(label=dark_params_NOut$sample_id, nudge_x=0, nudge_y=-0.15, check_overlap=T) +
+    geom_text(label=dark_params_NOut_clonerem$sample_id, nudge_x=0, nudge_y=-0.15, check_overlap=T) +
   #scale_fill_manual(values=c("orange", "#33A02C")) +
   #scale_color_manual(values=c("orange", "#33A02C")) +
   scale_fill_manual(values=c("#33A02C", "orange")) +
