@@ -10,12 +10,12 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 require("knitr")
-opts_knit$set(root.dir = "~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Symbiodiniaceae diversity/Sequences_Profiles_PERMOVA/")
+opts_knit$set(root.dir = "../Symbiodiniaceae diversity/")
 ```
 
 # Set working directory 
 ```{r user_definitions}
-setwd("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Symbiodiniaceae diversity/Sequences_Profiles_PERMOVA/")
+setwd("../Symbiodiniaceae diversity/")
 ```
 
 ```{r}
@@ -55,18 +55,17 @@ read_fasta_df <- function (file = "") {
 
 # Read in and format the **sequence** tables
 
-**Metadata now includes an extra column *population* which contains the populations based on STRUCTURE and DAPC analysis** 
-CLONE is included!!!!
+Metadata now includes an extra column *population* which contains the populations based on STRUCTURE and DAPC analysis. CLONE is included!
 
 ```{r}
 # Import sequence table
-seqs <- read_tsv("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Symbiodiniaceae diversity/Sequences_Profiles_PERMOVA/20230421T034816_cduijser/post_med_seqs/259_20230421T204816_DBV_20230422T042656.seqs.absolute.abund_and_meta.txt") %>%
+seqs <- read_tsv("../Symbiodiniaceae diversity/20230421T034816_cduijser/post_med_seqs/259_20230421T204816_DBV_20230422T042656.seqs.absolute.abund_and_meta.txt") %>%
     mutate(sample_name = as.factor(sample_name)) %>%
     filter(!(is.na(sample_name))) # remove the final empty row; see Excel or text file row 98 "seq_accession"
 #ANY SAMPLES NOT TO BE ANALYSED ADD ANOTHER FILTER HERE. Row = seq_accession but nothing more in other cells.
 
 # Import sample_name metadata
-meta <- read.csv("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Symbiodiniaceae diversity/Sequences_Profiles_PERMOVA/230423 metadata_species_colony_position_CMD_HYBRID_2.csv", sep=",")
+meta <- read.csv("../Symbiodiniaceae diversity/230423 metadata_species_colony_position_CMD_HYBRID_2.csv", sep=",")
 
 str(meta)
 meta$habitat <- as.factor(meta$habitat)
@@ -154,7 +153,7 @@ seqs_pal2 <- c(c_pal, d_pal, f_pal, b_pal)
 # Read in and format the **profile** tables
 ```{r}
 # Read in the profile data
-profiles_raw <- read_tsv("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Symbiodiniaceae diversity/Sequences_Profiles_PERMOVA/20230421T034816_cduijser/its2_type_profiles/259_20230421T204816_DBV_20230422T042656.profiles.absolute.abund_and_meta.txt", skip = 6) %>% #first 6 rows is other text
+profiles_raw <- read_tsv("../Symbiodiniaceae diversity/20230421T034816_cduijser/its2_type_profiles/259_20230421T204816_DBV_20230422T042656.profiles.absolute.abund_and_meta.txt", skip = 6) %>% #first 6 rows is other text
     select(sample_name = `...2`, `C1d/C42.2/C1-C1bl-C3cg-C1b-C45c`:`D1bt/D6/D4-D1-D1cf-D1bs-D1ce-D1dr`) %>% # rename the second column as "sample_name" and select the profile columns
     filter(!is.na(sample_name)) #removes last 2 rows
 
@@ -209,7 +208,7 @@ ggplot(profile_data, aes(x = "", y = value_rel, fill = name)) +
   scale_fill_manual(values = profile_pal_pie) +
   labs(title = "Relative values of habitat in profile data", fill = "Name") +
   theme(panel.grid.minor = element_blank())
-#ggsave("/Users/chiara/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Symbiodiniaceae diversity/Sequences_Profiles_PERMOVA/profiles_pie_HYBRID_cloneincl2.pdf")
+#ggsave("../Symbiodiniaceae diversity/profiles_pie_HYBRID_cloneincl2.pdf")
 ```
 
 # Plot with Symbiodiniaceae sequences and ITS2 type profiles in one graph
@@ -223,7 +222,7 @@ all_pal['Non-profile sequences'] <- "#808080"
 
 # Save the color palette to a file
 #saveRDS(all_pal, file = "color_palette.rds")
-all_pal <- readRDS("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Symbiodiniaceae diversity/Sequences_Profiles_PERMOVA/color_palette.rds")
+all_pal <- readRDS("../Symbiodiniaceae diversity/color_palette.rds")
 
 # Define the order of sample names based on habitat and colony_position for plotting
 sample_order <- all_data %>%
@@ -307,7 +306,7 @@ Unifrac measures the phylogenetic distance between sets of taxa in a phylogeneti
 
 ```{r}
 # Import and filter sequence data
-fasta <- read_fasta_df("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Symbiodiniaceae diversity/Sequences_Profiles_PERMOVA/20230421T034816_cduijser/post_med_seqs/259_20230421T204816_DBV_20230422T042656.seqs.fasta") %>%
+fasta <- read_fasta_df("../Symbiodiniaceae diversity/20230421T034816_cduijser/post_med_seqs/259_20230421T204816_DBV_20230422T042656.seqs.fasta") %>%
   filter(label %in% seqs_long$name) %>% # keep only the sequences present in the sequence table above
   #filter(!str_detect(label, "A|G")) %>% # remove any clades/genera that you don't want included. This example removes any sequences from clade A and G.
   deframe() %>%
@@ -343,8 +342,6 @@ unifracs <- unidist$unifracs
 hclust_samps <- upgma(du)
 ```
 
-Weighted-Unifrac takes into account the relative abundance of species/taxa shared between samples, whereas unweighted-Unifrac only considers presence/absence. Matt found gat GUnifrac with alpha 0.5 works best, is most successful.
-
 # PERMANOVA of metadata factors (habitat and colony_position) and their explaining power of the unifrac distance
 ```{r}
 # Convert unifrac matrix into dist class
@@ -374,8 +371,6 @@ adonis2(dist ~ population + population/colony_position, data = adonis_meta)
 betadisp <- betadisper(dist, adonis_meta$population)
 plot(betadisp) # PCoA; Hybrid population has more dispersion than the reef and mangrove population
 anova(betadisp) # this dispersion is significantly different across populations, so caution is encouraged in interpreting significance
-
-# Notes: Population is significant - so the ITS2 sequence composition, according to pair-wise sample unifrac distances, differ across populations. However, mangrove/reef/hybrid populations have significantly different dispersion, which violates the assumption of PERMANOVA (caution to be applied). However if we consider that the mangrove profiles are distinct from reef profiles (see e.g. pie charts), it is likely that the population effect is true, and the dispersion differences are due to the within-colony sequence variability in the different populations (due to some colonies having C+B, and others only D). Colony position (shaded vs exposed) nested within each population, is not significant, however. Is this because the mangrove populations show almost zero differentiation across this factor? 
 ```
 
 
@@ -417,7 +412,6 @@ reef_dist <- dist_subset(dist, rownames(reef_meta))
 # Test colony_position on reef population only
 adonis2(reef_dist ~ colony_position, data = reef_meta)
 
-### NEW ### (old one significant but this one is not)
 #adonis2(formula = reef_dist ~ colony_position, data = reef_meta)
 #                Df  SumOfSqs      R2   F Pr(>F)  
 #colony_position  1 0.0019697 0.08451 2.4  0.056 .
@@ -490,7 +484,6 @@ pairwise.adonis(dist, factors=adonis_meta$population, perm=999)
 
 
 ### PCoA unifrac distance
-This will be a pcoa of the generalized unifrac distance with alpha 0.5 on which I performed a PERMANOVA. I will try to add colony_ID labels so I can compare this with host genetic data.
 
 ```{r}
 du_dist <- dist
@@ -532,8 +525,6 @@ ggplot(du_df, aes(x = PC1, y = PC2, color = metadata.population, shape=metadata.
     legend.title = element_text(size = 12),  # Legend title size
   ) 
 ggsave("PCoA_symbiont_HYBRID.pdf", width=7, height=4)
-#ggsave("PCoA_symbiont_HYBRID.pdf", width=10, height=4)
-ggplotly()
 ```
 
 
@@ -888,9 +879,9 @@ Hybrid_filtered <- mutate(Hybrid_filtered, sample_name = factor(sample_name, lev
   scale_y_continuous(labels = function(x) sprintf("%.2f", x), limits = c(0, 0.1)))
 
 # Save the plots
-#ggsave("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Symbiodiniaceae diversity/Sequences_Profiles_PERMOVA/back_Reef_colpos_cloneincl_2.0.pdf", plot = back_Reef_colpos)
-#ggsave("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Symbiodiniaceae diversity/Sequences_Profiles_PERMOVA/back_Mangrove_colpos_cloneincl_2.0.pdf", plot = back_Mangrove_colpos)
-#ggsave("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Symbiodiniaceae diversity/Sequences_Profiles_PERMOVA/back_Hybrid_colpos_cloneincl_2.0.pdf", plot = back_Hybrid_colpos)
+#ggsave("../Symbiodiniaceae diversity/back_Reef_colpos_cloneincl_2.0.pdf", plot = back_Reef_colpos)
+#ggsave("../Symbiodiniaceae diversity/back_Mangrove_colpos_cloneincl_2.0.pdf", plot = back_Mangrove_colpos)
+#ggsave("../Symbiodiniaceae diversity/back_Hybrid_colpos_cloneincl_2.0.pdf", plot = back_Hybrid_colpos)
 ```
 
 
