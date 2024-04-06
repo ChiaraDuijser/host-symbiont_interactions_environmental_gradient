@@ -13,15 +13,7 @@ opts_knit$set(root.dir = "/Users/chiara/Library/Mobile Documents/com~apple~Cloud
 
 # Set working directory 
 ```{r user_definitions}
-#ITS2 <- "~/ITS2"
-#ITS2 <- "/Volumes/TRACK/MSc - Research Project 2/Data : analyses/Symbiodiniaceae diversity/PCoA_Procrustes"
-#ITS2 <- "~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Symbiodiniaceae diversity/PCoA_Procrustes"
-#setwd(ITS2)
-
 getwd()
-#setwd("/Users/Chiara/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_working/DNA extractions/ITS2")
-#setwd("/Users/chiara/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_working/DNA extractions/ITS2")
-#setwd("/Users/chiara/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/Symbiodiniaceae diversity/PCoA_Procrustes")
 ```
 
 ```{r}
@@ -131,9 +123,7 @@ totals <- merged_data %>%
 
 
 # Procrustes rotation
-Info on procrustes rotation: https://john-quensen.com/tutorials/procrustes-analysis/
-I have to remove colony CD from my ITS2 dataset since this colony failed dartseq and so there's no data in my genlight object for CD. They have to have the same individuals otherwise it doesn't work.
-I also have to remove the samples from the clone (colony AB) because these are removed from the dartR object, otherwise the sample numbers aren't the same and the Procrustes doesn't work.
+Remove colony CD from ITS2 dataset since this colony failed dartseq and so there's no data in my genlight object for CD. They have to have the same individuals otherwise it doesn't work. Also remove the samples from the clone (colony AB) because these are removed from the dartR object, otherwise the sample numbers aren't the same and the Procrustes doesn't work.
 
 ```{r}
 # Drop the clones (colony AB) levels to do the analyses with only one pair of the clones!
@@ -147,8 +137,8 @@ merged_colony <- merged_data %>%
 merged_colony$sample_name <- as.factor(merged_colony$sample_name)
 levels(merged_colony$sample_name)
 
-#### Make sure to use correct new dartIDs since different based on different gl.report.callrate()
-#### Also make sure to remove 20.1 as a clone because the genlight object will have this one removed as well
+# Make sure to use correct new dartIDs since different based on different gl.report.callrate()
+# Also make sure to remove 20.1 as a clone because the genlight object will have this one removed as well
 
 seqs_wide_pr <- merged_colony %>%
   select(sample_name, name, value) %>% 
@@ -174,21 +164,17 @@ unifracs <- unidist$unifracs
 du <- unifracs[, , "d_0.5"] # GUniFrac with alpha 0.5
 dist_du <- as.dist(du, diag=FALSE)
 
-# make sure that the names in the gl.dist.ind object from dart match exactly the names in the unifrac distance object
-# Check if you can do Procrustes ordination on two different distance matrices. Dart is Euclidean, symbiont is unifrac.
-# Names match but different order in distance matrix => is that a problem?
+# Make sure that the names in the gl.dist.ind object from dart match exactly the names in the unifrac distance object
 library(dartR)
-#gl5_procrustes <- readRDS("C:/Users/156010/OneDrive - UTS/Documents/DArTseq - R #files/Report-DPoc22-7677/gl5.Rdata")
 
 # glp3 with 3 populations (mangrove, reef, hybrids) and hybrids included and clone removed
-glp3_procrustes <- readRDS("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_FINAL/SNP genotyping/Report-DPoc22-7677/glp3_hybrids_included.Rdata")
+glp3_procrustes <- readRDS("../SNP genotyping/Report-DPoc22-7677/glp3_hybrids_included.Rdata")
 
 matrix <- gl.dist.ind(glp3_procrustes, method="euclidean", scale=TRUE)
 dist_host <- as.dist(matrix, diag = FALSE)
 
 str(dist_du) #ITS2
 str(dist_host) #host
-# Same number of labels but not the same order, is that a problem?
 
 library(vegan)
 pr <- procrustes(dist_du, dist_host, symmetric = FALSE) #perform procrustes on the two separate distance matrices
@@ -196,16 +182,8 @@ pr
 summary(pr)
 plot(pr, type="text")
 plot(pr)
-#ggsave(filename=paste0(ITS2, "/Symbiodiniaceae_diversity_Procrustes_", ".pdf"), width=10, height=3) 
 # This shows the host PCoA and you see they all point towards the same symbiont communities within reef (top right) and mangrove (bottom left)
 
-# It makes more sense to put the PCA for the host data first because the ITS2 data is being fit to the host data, i.e. the target matrix. It is logical that ITS2 depend on the host, but not the other way around. As we will see, however, the order makes no difference when making a test of significance.
-#pr2 <- procrustes(dist_host, dist_du) #perform procrustes on the two separate distance matrices
-#pr2
-#summary(pr2)
-#plot(pr2, type="text")
-#plot(pr2)
-
-# This is nice, but how do I know the habitats now?
+# Significance test
 protest(X = dist_host, Y = dist_du, scores = "sites", permutations = 999)
 ```
