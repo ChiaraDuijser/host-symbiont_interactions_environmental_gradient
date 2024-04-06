@@ -1,6 +1,6 @@
 ---
 title: "Symbiodiniaceae diversity (Sequences, Profiles, PERMANOVA)"
-author: "Chiara Duijser"
+author: "Chiara Duijser, Matthew Nitschke"
 date: "2023-04-23"
 output:
   html_document: default
