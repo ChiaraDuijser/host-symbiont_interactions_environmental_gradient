@@ -342,7 +342,7 @@ unifracs <- unidist$unifracs
 hclust_samps <- upgma(du)
 ```
 
-# PERMANOVA of metadata factors (habitat and colony_position) and their explaining power of the unifrac distance
+# PERMANOVA of metadata factors (population and colony_position) and their explaining power of the unifrac distance
 ```{r}
 # Convert unifrac matrix into dist class
 dist <- as.dist(du, diag = FALSE)
@@ -357,16 +357,10 @@ adonis_meta <- meta %>%
   tibble::column_to_rownames(var = "sample_name") # vegan requires sample_names as row names
 
 # call the permanova test and specify the model factors
-# the below formula tests for an effect of habitat on the ITS2 unifrac distance, and then tests for an effect of colony_position, nested within each habitat
+# the below formula tests for an effect of population on the ITS2 unifrac distance, and then tests for an effect of colony_position, nested within each population
 library(vegan)
 adonis2(dist ~ population + population/colony_position, data = adonis_meta)
-
-#adonis2(formula = dist ~ population + population/colony_position, data = adonis_meta)
-#                           Df SumOfSqs      R2        F Pr(>F)    
-#population                  2  18.2310 0.75952 142.1782  0.001 ***
-#population:colony_position  3   0.0020 0.00008   0.0104  0.995    
-#Residual                   90   5.7702 0.24039                    
-#Total                      95  24.0031 1.00000  
+adonis2(formula = dist ~ population + population/colony_position, data = adonis_meta)
 
 betadisp <- betadisper(dist, adonis_meta$population)
 plot(betadisp) # PCoA; Hybrid population has more dispersion than the reef and mangrove population
@@ -459,13 +453,13 @@ adonis_meta2 <- meta %>%
   tibble::column_to_rownames(var = "sample_name") # vegan requires sample_names as row names
 
 # call the permanova test and specify the model factors
-adonis(dist ~ population, data = adonis_meta)
+adonis2(dist ~ population, data = adonis_meta2)
 
-###### POPULATION #######
-#           Df SumsOfSqs MeanSqs F.Model      R2 Pr(>F)    
-#population  2   19.7177  9.8589  269.92 0.85847  0.001 ***
-#Residuals  89    3.2507  0.0365         0.14153           
-#Total      91   22.9685                 1.00000           
+###### POPULATION Clones included #########
+#           Df SumOfSqs      R2      F Pr(>F)    
+#population  2  18.2310 0.75952 146.87  0.001 ***
+#Residual   93   5.7722 0.24048                  
+#Total      95  24.0031 1.00000            
 
 betadisp <- betadisper(dist, adonis_meta$population)
 plot(betadisp) # very far apart
