@@ -1,5 +1,5 @@
 ---
-title: "Symbiodiniaceae diversity (Sequences, Profiles, PERMANOVA)"
+title: "Symbiodiniaceae diversity (Sequences, Profiles, PCoA, PERMANOVA)"
 author: "Chiara Duijser, Matthew Nitschke"
 date: "2023-04-23"
 output:
