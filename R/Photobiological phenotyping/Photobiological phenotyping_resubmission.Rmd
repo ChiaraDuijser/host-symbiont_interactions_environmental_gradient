@@ -1,0 +1,999 @@
+---
+title: "Photobiology analysis (October 2022; Low Isles)"
+author: "Chiara Duijser, Matthew Nitschke"
+date: "2023-03-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Photobiology analysis (October 2022; Low Isles)
+### Libraries
+```{r}
+# Libraries for plotting and being tidy
+library(tidyverse)
+library(broom)
+library(purrr)
+library(lubridate)
+theme_set(theme_bw())
+
+# Libraries for fitting curves
+library(nls.multstart)
+library(nlstools)
+library(bestNormalize)
+library(vegan)
+library(ggalt)
+```
+
+### Photobiology data import
+
+```{r message = FALSE, warning = FALSE}
+file_names <- list.files(getwd(), pattern = "_fit.csv", full.names = TRUE, recursive = TRUE)
+file_paths <- file.path(file_names)
+
+combined_data <- file_paths %>%
+  map(read_csv) %>% # read in all the files, using the function read_csv() from the readr package
+  map(select, `Source DataFile`:QBP_Size) %>%
+  purrr::reduce(rbind) %>%      # reduce with rbind into one dataframe
+  filter(!str_detect(DATE, "---")) %>% # Remove the pointless line below the column names
+  dplyr::rename(sample_filename = `Source DataFile`) # Make column header R friendly
+```
+
+### Create metadata
+```{r}
+c_meta <- read_csv("chiara_metadata.csv") %>%
+  mutate(across(where(is.numeric), as.character)) %>%
+  mutate(site = case_when(site == "1" ~ "mangrove_1",
+                          site == "2" ~ "mangrove_2",
+                          site == "3" ~ "reef_3",
+                          site == "4" ~ "reef_4"))
+
+#c_meta with added sample_filename
+#meta <- data.frame(sample_filename = unique(combined_data$sample_filename)) %>%
+ #  mutate(sample_id = paste0(str_remove_all(sample_filename, "\\\\"))) %>%
+  #  mutate(sample_id = paste0(str_remove_all(sample_id, "C:LIFTDATAChiara Oct 2022"))) %>%
+   #     mutate(sample_id = paste0(str_remove_all(sample_id, "_data.csv"))) %>%
+    #      left_join(., c_meta)
+
+#c_meta with added sample_filename
+meta <- data.frame(sample_filename = unique(combined_data$sample_filename)) %>%
+  mutate(sample_id = paste0(str_remove_all(sample_filename, "\\\\"))) %>%
+  mutate(sample_id = paste0(str_remove_all(sample_id, "C:LIFTDATAChiara Oct 2022"))) %>%
+  mutate(sample_id = paste0(str_remove_all(sample_id, "_data.csv"))) %>%
+  mutate(sample_id = as.character(sample_id)) %>%  # Convert sample_id to character to match c_meta
+  left_join(., mutate(c_meta, sample_id = as.character(sample_id)))
+```
+
+### Join metadata in with data values
+Where is the mangrove and reef in all_data; site, sample_id, colony and habitat are in c_meta/meta.
+function left_join includes all rows in x, but I don't see in if I View(all_data)
+
+```{r}
+all_data <- left_join(combined_data, meta) %>%
+  dplyr::rename(PAR = Light_1, FqFm = `Fv/Fm`) 
+write_csv(all_data, "all_soliense_data.csv")
+
+all_data <- read_csv("all_soliense_data.csv")
+str(all_data)
+all_data$SigLCHII <- ((all_data$Sig) / (all_data$FqFm)) # produce SigmaLCHII as in Suggett et al. 2022
+```
+
+### Select only the RLC data, tidy the PAR values, and create some grouping factors
+```{r}
+data_rlc <- all_data %>%
+  group_by(sample_filename) %>%
+  slice_head(n = 31) %>%
+  mutate(PAR = floor(as.numeric(PAR)),
+         PAR = ifelse(PAR < 1, 0.1, PAR)) %>% # PAR values = 0 will result in infinite values during fitting. Replace with 0.001.
+  type_convert() %>%
+  mutate(PAR_factor = factor(as.character(PAR))) %>% # Create a categorical PAR variable
+  mutate(PAR_factor = fct_relevel(PAR_factor, "0.1", "10", "25", "50", "100", "150", "250", "500", "750", "1000", "1250")) %>%
+  group_by(sample_filename) %>%
+  mutate(measurement = row_number(), # Create a measurement index
+         curve_id = group_indices()) %>% # Create a curve index
+  ungroup()
+```
+
+### Average the yields at each PAR step
+```{r}
+data_means <- data_rlc %>%
+  group_by(sample_filename, DATE, PAR, PAR_factor, curve_id, sample_id, site, colony, habitat) %>%
+  summarise(Fo = mean(Fo), #F0 = minimum fluorescence; PSII reaction centers open in dark-adapted state
+            Fm = mean(Fm)) %>% #Fm = maximum fluorescence; closed state of PSII reaction centers (electrons cannot be exported so energy is dissipated as heat or fluorescence?)
+  ungroup()
+
+# Perform sanity check for expected numbers of measurements
+sanity <- data_means %>%
+  group_by(PAR_factor) %>%
+  dplyr::count()
+```
+
+### Calculate further parameters derived from F & Fm values
+Fv/Fm = measured when all reaction centers are open (e.g., under darkness)
+Fq/Fm = all subsequent measurements of quantum yield under light
+
+```{r}
+clean_data <- data_means %>%
+  #filter(PAR > 0.1) %>%
+  #filter(curve_id != "18", curve_id != "19") %>% # these two samples are very atypical
+  group_by(sample_filename, DATE, curve_id, sample_id, site, colony, habitat) %>%
+  mutate(Fm = ifelse(Fm <= Fo, Fo+1, Fm), # There should not be any Fm values < F
+         FqFm = (Fm - Fo)/Fm, # Quantum yield of PSII
+         rETR = FqFm * PAR, # Relative electron transport rate
+         Fo.p = dplyr::first(Fo) / (dplyr::first(FqFm) + (dplyr::first(Fo)/Fm)), # Fo'
+         onemC = (Fm - Fo)/(Fm - Fo.p), # [1 - C]
+         Fv.p = Fm - Fo.p, # Fv'
+         onemQ = (Fv.p/Fm)/dplyr::first(FqFm)) %>% # [1 - Q]  
+  ungroup()
+
+write_csv(clean_data, "soliense_means.csv") #creates a .csv file in R folder LIFT-data
+```
+
+# FqFm vs E (PAR)
+
+## Define the Hennige 2008 equation
+Commonly used to model curve and derive Ek from the data.
+
+```{r}
+Hennige <- function(FqFmmax, Ek, x) {
+  model <- ((FqFmmax*Ek)*(1-exp(-x/Ek)))/x
+  return(model)
+}
+```
+
+## Fit the FqFm RLC using purrr::map across groups
+Here, the clean_data dataset is used which was saved as "soliense_means.csv"
+
+**Suggett et al., 2022**
+Hennige equation/model is used to retrieve Ek, model describes light (E) dependency of PSII photochemistry
+Fitting was performed in R using the nls_multstart (Padfield et al. 2016) R package which employs the nlsLM function in the minpack.lm (Elzhov et al. 2013) R package
+
+```{r}
+# Fit the quantum yield against the PAR_adjusted data 
+FqFmfits <- clean_data %>%
+  group_by(., curve_id, sample_id, site, colony, habitat) %>%
+  nest() %>%
+  mutate(fit = purrr::map(data, ~ nls_multstart(FqFm ~ Hennige(FqFmmax, Ek, x = PAR),
+                     data = .x,
+                     iter = 250,
+                     start_lower = c(FqFmmax = 0.1, Ek = 5),
+                     start_upper = c(FqFmmax = 0.85, Ek = 1380),
+                     supp_errors = 'Y',
+                     convergence_count = 100,
+                     na.action = na.omit,
+                     lower = c(FqFmmax = 0.1, Ek = 5))))
+```
+
+## Tidy the model fits and generate conf intervals of parameters
+```{r}
+# get summary
+FqFminfo <- FqFmfits %>%
+  mutate(summary = map(fit, glance)) %>%
+  unnest(summary) %>%
+  select(-fit, -data)
+
+# get parameters
+FqFmparams <- FqFmfits %>%
+  mutate(., p = map(fit, tidy)) %>%
+  unnest(p) %>%
+  select(-fit, -data)
+
+# get confidence intervals
+FqFmCI <- FqFmfits %>%
+  mutate(., cis = map(fit, confint2),
+         cis = map(cis, data.frame)) %>%
+  unnest(cis) %>%
+  dplyr::rename(., conf.low = X2.5.., conf.high = X97.5..) %>%
+  group_by(., curve_id) %>%
+  mutate(., term = c('FqFmmax', 'Ek')) %>%
+  ungroup() %>%
+  select(., -data, -fit)
+
+# merge parameters and CI estimates
+FqFmparams <- merge(FqFmparams, FqFmCI, by = intersect(names(FqFmparams), names(FqFmCI)))
+
+# Create long PAR list
+new_preds <- clean_data %>%
+  do(., data.frame(PAR = seq(min(.$PAR), max(.$PAR), length.out = 200), stringsAsFactors = FALSE))
+
+# Augment (increase/add) predictions from fits
+# This predictions dataframe holds predicted PAR and FqFm values for each sample_id/habitat/site based on the Hennige model
+predictions <- FqFmfits %>%
+  mutate(., p = map(fit, augment, newdata = new_preds)) %>%
+  unnest(p) %>%
+  dplyr::rename(., FqFm = .fitted) %>%
+  group_by(curve_id) %>%
+  mutate(prediction_id = group_indices()) %>%
+  select(-fit, -data)
+```
+
+# Plot the data and their fitted values
+
+The red boxes indicate the estimate of Ek and confidence interval of the parameters
+
+Model fit = Hennige 2008 equation. E on x-axis is PAR.
+
+Ek prediction for curve_id 18 (sample 7; mangrove, cryptic) and 19 (sample 8; mangrove, cryptic) lies beyond the actual data points, which is weird. The Hennige model is different because an exponential decay in FqFm is expected, but we see already see a sharp drop from 0.1 to 10 PAR (first light step). This is why the model predictions/fitted values and observed values don't align.
+
+Curve_id 12 (sample 131; reef, cryptic) is most like we would expect it to be. It was a thin red line which means small 95% CI around the predicted Ek value based on the Hennige model and our data.
+
+
+```{r}
+ggplot() +
+  geom_vline(aes(xintercept = estimate), FqFmparams %>% filter(term == "Ek")) +
+  geom_rect(aes(xmin = conf.low, xmax = conf.high, ymin = 0, ymax = Inf), fill = "red", alpha = 0.5, FqFmparams %>% filter(term == "Ek")) + #this is the predicted Ek value from the Hennige model
+  geom_line(aes(PAR, FqFm, group = prediction_id), col = "black", alpha = 0.5, predictions) +
+  geom_point(aes(PAR, FqFm, fill = habitat), size = 2, shape = 21, alpha = 0.5, clean_data) +
+  geom_path(aes(PAR, FqFm, group = curve_id), clean_data) +
+  facet_wrap(~ curve_id) +
+  scale_x_continuous(trans = 'log10') +
+  theme(legend.position = "right", aspect.ratio = 1) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  guides(fill = guide_legend(override.aes = list(size = 3, shape = c(21)))) +
+  ggtitle("Fq/Fm versus E with model fit ((FqFmmax*Ek)*(1-exp(-x/Ek)))/x") +
+  labs(x = expression(paste("E (", mu,"mol photons m"^-2*" s"^-1*")")), 
+       y = 'Fq/Fm (dimensionless) +- SE')
+```
+
+# Investigate the other parameters generated by the Soliense
+
+Start for the params measured under darkness
+
+carQ = carotenoid quencing; develops under condition of high excitation power, typical of the saturation portion of the QA fluorescence transient
+
+Ek = saturating irradiance; defined as point at which the extrapolated initial slope crosses Pmax => Ek represents an optimum on the photosynthesis irradiance curve. Higher Ek values indicate acclimation to high irradiance (as Ek is presented in units of PAR). Ek is higher for reef samples, which would be expected because reef corals are in less turbid waters so higher light intensities. So they are able to photosynthesize more under high light intensities.
+
+FqFm = measurements of quantum yield under light. Values appear higher for exposed fragments. Able to photosynthesize more (or more efficiently?) under specific light conditions compared to cryptic symbionts.
+
+p = probability of energy transfer; describes a probablity that excitation energy can be shared between reaction centers. If p = 0 there's no energy transfer (first-order saturation), does this mean that all energy is lost to heat/non-photochemical quenching (NPQ)?. Here, p = 0.2 (set value).
+
+PQP_size = plastoquinone pool size; PQ pool = mobile pool of plastoquinone within thylakoid bilyaer that mediates electron transport between QB component of PSII and cyt bf complex by a mechanisms of "long distance" electron shuttle. PQ pool gets oxidized (i.e., it loses electrons). Does PQ reoxidation mean reduction (getting electrons) of PQ pool so that it can be oxidized again during next light pulse?
+
+QBP_size = QB pool size
+
+Sig = functional absorption cross section of PSII; defines the effieciency of photosynthetic light utilization (EPU) by PSII. If this defines the efficiency of photosynthetic light utilization, is this values then the mean value of FqFm because that resembles photosyntehtic efficiency of PSII? => Yes, sigma and Fv/Fm can be correlated (see Suggett et al., 2015 New Phytologist). It can also be correlated with Ek (see Suggett et al., 2022 Limnology and Oceanography methods).
+
+Tau1QA; min. electron turnover time from QA to QB => comes from relaxation phase
+Tau2QA; min. electron turnover time from Qb to PQ => comes from relaxation phase
+Tau3QA; min. electron turnover time from PQ to PSI => comes from relaxation phase
+TPQ_PSI; ?
+
+```{r}
+ dark_params <- data_rlc %>%
+  filter(PAR == 0.1) %>%
+  select(curve_id, site, colony, habitat, FqFm, Sig, PQP_Size, Tau1QA, Tau2QA, Tau3QA, p, TPQ_PSI, QBP_Size, carQ, Ek, SigLCHII) %>% # added in SigLCHII
+  pivot_longer(FqFm:SigLCHII, names_to = "params", values_to = "value")
+ 
+ggplot(dark_params, aes(site, value)) +
+  geom_boxplot(aes(fill = habitat)) +
+  facet_wrap(~params, scales = "free_y") +
+  scale_fill_manual(values = c("black", "yellow"))
+```
+
+# Do multivariate analysis of the Soliense parameters
+Look at PCA plot for each  different light step and label the individual points with text label within code. Maybe check for outliers.
+
+Principal Component Analysis clears the "noise" to allow you to identify patterns in the data (removes redundancy). It reduces dimensions by projecting the whole data set onto a completely separate space without losing too much information.
+
+The first principal component accounts for the largest possible variances (variances = what measures the amount of information). The vector will point into the direction of the larger spread of data (Eigenvector), the number will be equal to the spread (variance) of that direction (Eigenvalue).
+
+Keep in mind that PCs are ranked by how much they describe the data. PC1 reveals the most variation, while PC2 reveals the second most variation. Therefore, differences among clusters along PC1 axis are actually larger than the similar-looking distances along PC2 axis.
+
+PCA biplot = merge an usual PCA plot with a plot of loadings
+
+```{r}
+# PCA based phenotyping function
+phenotype <- function(data, PAR_level = 0.1){
+  
+  params <- data %>%
+    filter(PAR == PAR_level) %>%
+    select(sample_id, curve_id, colony, site, habitat, 
+           PQP_Size, Tau1QA, Tau2QA, Tau3QA, carQ, p, TPQ_PSI, QBP_Size, Ek, SigLCHII) %>%
+    group_by(sample_id, curve_id, colony, site, habitat) %>%
+    summarise(PQP_Size = mean(PQP_Size), #in PCA you plot the mean values
+              Tau1QA = mean(Tau1QA),
+              Tau2QA = mean(Tau2QA),
+              Tau3QA = mean(Tau3QA),
+              #p = mean(p),
+              TPQ_PSI = mean(TPQ_PSI),
+              QBP_Size = mean(QBP_Size),
+              carQ = mean(carQ),
+              Ek = mean(Ek),
+              SigLCHII = mean(SigLCHII)
+              ) %>%
+    mutate(sample_id = as.character(sample_id))
+  
+# apply bestNormalize heuristics
+  params_bn <- params
+
+  inst_transformations <- data.frame()
+  for(i in 6:ncol(params_bn)){
+  set.seed(3455)
+  dat <- params_bn %>% pull(i)
+  whichnorm <- bestNormalize(dat, standardize = FALSE, out_of_sample = FALSE)
+  #print(colnames(params_bn[i]))
+  #print(whichnorm)
+  params_bn[i] <- whichnorm$x.t
+  
+  trans <- data.frame(variable = colnames(params_bn[i]), transformation = class(whichnorm$chosen_transform))
+  inst_transformations <- rbind(inst_transformations, trans)
+  }
+  
+  rda <- params_bn %>%
+  column_to_rownames(var = "sample_id") %>%
+  select(PQP_Size:SigLCHII)
+  
+# zero mean
+rda <- vegan::decostand(rda, method = "standardize") # make zero mean
+
+# pca
+pca <- rda(rda)
+
+# extract the scores
+scrs_samples <- as.data.frame(scores(pca, display = "sites")) %>% # Extract sample scores
+  rownames_to_column(var = "sample_id")
+scrs_params <- as.data.frame(scores(pca, display = "species")) %>% # Extract parameter scores
+  rownames_to_column(var = "params")
+
+# create plot dataframe
+plot_df <- left_join(params, scrs_samples)
+
+p <- ggplot(plot_df, aes(x = PC1, y = PC2)) +
+  geom_point(aes(fill = site, shape = as.factor(habitat)), size = 4) +
+  geom_segment(data = scrs_params, aes(x = 0, xend = PC1, y = 0, yend = PC2), 
+               size = 0.5, arrow = arrow(length = unit(0.25, "cm")), colour = "grey") +
+  geom_text(data = scrs_params, aes(x = PC1, y = PC2, label = params), size = 4) +
+  scale_shape_manual(values = c(21, 22)) +
+  scale_fill_manual(values = c("green", "blue")) +
+  ggalt::geom_encircle(aes(fill = site), s_shape = 1, expand = 0, alpha = 0.2, show.legend = FALSE) +
+  theme(legend.position = "right", aspect.ratio = 1) +
+  guides(fill = guide_legend(override.aes = list(shape = 21)))
+
+p <- ggplot(plot_df, aes(x = PC1, y = PC2)) +
+  geom_point(aes(fill = site, shape = as.factor(habitat)), size = 4) +
+  geom_segment(data = scrs_params, aes(x = 0, xend = PC1, y = 0, yend = PC2), 
+               size = 0.5, arrow = arrow(length = unit(0.25, "cm")), colour = "grey") +
+  geom_text(data = scrs_params, aes(x = PC1, y = PC2, label = params), size = 4) +
+  geom_text(label=params$sample_id, nudge_x=0.15, check_overlap=T) +
+  scale_shape_manual(values = c(21, 22)) +
+  scale_fill_manual(values = c("green", "blue")) +
+  ggalt::geom_encircle(aes(fill = site), s_shape = 1, expand = 0, alpha = 0.2, show.legend = FALSE) +
+  theme(legend.position = "right", aspect.ratio = 1) +
+  guides(fill = guide_legend(override.aes = list(shape = 21)))
+
+return(p)
+}
+
+p_0.1 <- phenotype(data = data_rlc, PAR_level = 0.1)
+p_0.1
+p_10 <- phenotype(data = data_rlc, PAR_level = 10)
+p_10
+p_25 <- phenotype(data = data_rlc, PAR_level = 25)
+p_25
+p_50 <- phenotype(data = data_rlc, PAR_level = 50)
+p_50
+p_100 <- phenotype(data = data_rlc, PAR_level = 100)
+p_100
+p_150 <- phenotype(data = data_rlc, PAR_level = 150)
+p_150
+p_250 <- phenotype(data = data_rlc, PAR_level = 250)
+p_250
+p_500 <- phenotype(data = data_rlc, PAR_level = 500)
+p_500
+p_750 <- phenotype(data = data_rlc, PAR_level = 750)
+p_750
+p_1000 <- phenotype(data = data_rlc, PAR_level = 1000)
+p_1000
+p_1250 <- phenotype(data = data_rlc, PAR_level = 1250)
+p_1250
+```
+
+This PCA for PAR = 0.1 is different then my final figure as FqFm and Sigma are still included. These are removed and replaced with SigmaLCHII.
+
+# 1-C 1-Q
+
+```{r}
+clean_data %>%
+  ggplot(aes(onemQ, onemC, group = sample_id)) +
+  geom_path(aes(colour = PAR), alpha = 0.5) +
+  geom_point(aes(colour = PAR, fill = PAR, shape = as.factor(habitat)), size = 4, alpha = 0.5) +
+  facet_grid(vars(site), vars(colony)) +
+  scale_colour_viridis_c(option = "magma") +
+  scale_fill_viridis_c(option = "magma") +
+  theme(aspect.ratio = 1, legend.position = "right") +
+  xlab("[1 - Q] Non-photochemical quenching") +
+  ylab("[1 - C] Photochemical quenching")
+```
+
+
+Since mangrove and reef are really distinct at p_0.1 this probably indicates that they’re “enough” low light acclimated for the Soliense to work. Making a distinction between cryptic and exposed is hard because you don’t know the exact light intensities they’re receiving. Sand can also reflect light. To really know differences between parts of 1 colony you would have to sample a whole colony and look at different parts of it.
+(Graph going down/up/down is probably artefact of Soliense. Glitch in one of the first light steps)
+
+So I will test for differences between mangrove (site 1) and reef (site 4) for light intensity 0.1 with a PCA plot. First, however it's important to check for outliers in dataset (looking at data, curve_id 18 and 19 could be outliers) and remove if needed. Outlier removal has to be done before data normalization otherwise you may end up with different variables having different standard deviations (which is an issue, for example, in PCA analysis; https://stats.stackexchange.com/questions/415704/should-you-standardize-your-variables-before-or-after-removing-outliers). 
+
+# Check for outliers and remove if needed to make PCA plot + do statistics on this data
+I would have to make a PCA plot with outliers removed if they should be removed according to R code/function. And then do statistics on PCA ordination/loadings extracted from the plot.
+
+First, create a dataset from the dark_params, i.e. parameters generated by the Soliense at PAR_level = 0.1.
+
+```{r}
+dark_params <- data_rlc %>% #data_rlc already has metadata in last columns
+  filter(PAR == 0.1) %>%
+  select(sample_id, curve_id, site, colony, habitat, FqFm, Sig, PQP_Size, Tau1QA, Tau2QA, Tau3QA, p, TPQ_PSI, QBP_Size, carQ, Ek, SigLCHII) #or use left_join; 2 data sets must have 1 column in common.
+
+View(dark_params) #20 observations with parameters generated by Soliense for PAR_level = 0.1
+
+# The dataset is now ready for outlier check, but it needs to be in the long-form for this
+dark_params_long <- data_rlc %>%
+  filter(PAR == 0.1) %>%
+  select(sample_id, curve_id, site, colony, habitat, FqFm, Sig, PQP_Size, Tau1QA, Tau2QA, Tau3QA, p, TPQ_PSI, QBP_Size, carQ, Ek, SigLCHII) %>%
+  pivot_longer(FqFm:SigLCHII, names_to = "params", values_to = "value") #params and value will be 2 new columns
+
+library(rstatix)
+library(magrittr)
+
+dark_params_long %>%
+  doo(~mahalanobis_distance(.)) %>% #long-form does work; 2, 14, 18 (with SigLCHII 2, 14, 18 and 19)
+  filter(is.outlier==T) # == instead of = because it's a logical
+
+dark_params_long %>%
+  doo(~mahalanobis_distance(dark_params_long, value)) %>% #14, 18, 19 => value is parameter of interest
+  filter(is.outlier==T) 
+
+# Check why without grouping by params? Mahalanobis Distance works well when two or more variables are highly correlated and even if their scales are not the same, because MD uses a covariance matrix (unlike Euclidean Distance). mahalanobis_distance(data, ...) -> ... used to select a variable of interest; below value is our variable of interest and we compute distance by groups, i.e. here params.
+dark_params_long %>%
+  group_by(params) %>%
+  doo(~mahalanobis_distance(dark_params_long, value)) %>% #added value changes things; 14, 18 and 19 are outliers
+  filter(is.outlier==T) 
+
+##grouping doesn't work, so I could do it manually for each level of params separately (that's what Amanda did)
+#select data within dataset; carQ
+dark_params_long_carQ <- dark_params_long%>%
+                          filter(params == "carQ")
+
+# Compute mahalonobis distance and flag outliers if any
+dark_params_long_carQ %>%
+  doo(~mahalanobis_distance(dark_params_long_carQ, value)) %>%
+  filter(is.outlier==T)
+
+#select data within dataset; Ek
+dark_params_long_Ek <- dark_params_long%>%
+                          filter(params == "Ek")
+
+# Compute mahalonobis distance and flag outliers if any
+dark_params_long_Ek %>%
+  doo(~mahalanobis_distance(dark_params_long_Ek, value)) %>%
+  filter(is.outlier==T)
+
+#select data within dataset; FqFm
+dark_params_long_FqFm <- dark_params_long%>%
+                          filter(params == "FqFm")
+
+# Compute mahalonobis distance and flag outliers if any
+dark_params_long_FqFm %>%
+  doo(~mahalanobis_distance(dark_params_long_FqFm, value)) %>%
+  filter(is.outlier==T)
+
+#select data within dataset; PQP_size
+dark_params_long_PQP_Size <- dark_params_long%>%
+                          filter(params == "PQP_Size")
+
+# Compute mahalonobis distance and flag outliers if any
+dark_params_long_PQP_Size %>%
+  doo(~mahalanobis_distance(dark_params_long_PQP_Size, value)) %>%
+  filter(is.outlier==T)
+
+#select data within dataset; QBP_Size
+dark_params_long_QBP_Size <- dark_params_long%>%
+                          filter(params == "QBP_Size")
+
+# Compute mahalonobis distance and flag outliers if any
+dark_params_long_QBP_Size %>%
+  doo(~mahalanobis_distance(dark_params_long_QBP_Size, value)) %>%
+  filter(is.outlier==T)
+
+#select data within dataset; Sig
+dark_params_long_Sig <- dark_params_long%>%
+                          filter(params == "Sig")
+
+# Compute mahalonobis distance and flag outliers if any
+dark_params_long_Sig %>%
+  doo(~mahalanobis_distance(dark_params_long_Sig, value)) %>%
+  filter(is.outlier==T)
+
+#select data within dataset; Tau1QA
+dark_params_long_Tau1QA <- dark_params_long%>%
+                          filter(params == "Tau1QA")
+
+# Compute mahalonobis distance and flag outliers if any
+dark_params_long_Tau1QA %>%
+  doo(~mahalanobis_distance(dark_params_long_Tau1QA, value)) %>%
+  filter(is.outlier==T)
+
+#select data within dataset; Tau2QA
+dark_params_long_Tau2QA <- dark_params_long%>%
+                          filter(params == "Tau2QA")
+
+# Compute mahalonobis distance and flag outliers if any
+dark_params_long_Tau2QA %>%
+  doo(~mahalanobis_distance(dark_params_long_Tau2QA, value)) %>%
+  filter(is.outlier==T)
+
+#select data within dataset; Tau3QA
+dark_params_long_Tau3QA <- dark_params_long%>%
+                          filter(params == "Tau3QA")
+
+# Compute mahalonobis distance and flag outliers if any
+dark_params_long_Tau3QA %>%
+  doo(~mahalanobis_distance(dark_params_long_Tau3QA, value)) %>%
+  filter(is.outlier==T)
+
+#select data within dataset; TPQ_PSI
+dark_params_long_TPQ_PSI <- dark_params_long%>%
+                          filter(params == "TPQ_PSI")
+
+# Compute mahalonobis distance and flag outliers if any
+dark_params_long_TPQ_PSI %>%
+  doo(~mahalanobis_distance(dark_params_long_TPQ_PSI, value)) %>%
+  filter(is.outlier==T)
+
+#select data within dataset; SigLCHII
+dark_params_long_SigLCHII <- dark_params_long%>%
+                          filter(params == "SigLCHII")
+
+# Compute mahalonobis distance and flag outliers if any
+dark_params_long_SigLCHII %>%
+  doo(~mahalanobis_distance(dark_params_long_TPQ_PSI, value)) %>%
+  filter(is.outlier==T)
+```
+
+Based on mahalanobis_distance separated by group, only curve_id 14 is considered an outlier and belongs to mangrove (site 1). Let's remove these data points from dark_params (the wide form with 20 observations).
+
+```{r}
+dark_params_NOut <- subset(dark_params, curve_id!=14)
+str(dark_params_NOut)
+dark_params_NOut$sample_id <- as.factor(dark_params_NOut$sample_id)
+#View(dark_params_NOut)
+```
+
+Outliers are removed. Now, it's important to normalize our data before making a PCA plot. 
+
+### Normalize data + make PCA plot
+```{r}
+str(dark_params_NOut) #for p0.1 and already contains the mean values of FqFm:Ek
+dark_params_NOut$site <- as.factor(dark_params_NOut$site) #make site a factor
+
+dark_params_NOut$population <- c(
+  "Hybrids", 
+  "Hybrids", 
+  "Hybrids", 
+  "Hybrids", 
+  "Hybrids", 
+  "Hybrids",  
+  "Hybrids", 
+  "Hybrids", 
+  "Hybrids", 
+  "Hybrids", 
+  "Hybrids", 
+   "Mangrove", 
+   "Mangrove", 
+   "Mangrove", 
+   "Hybrids", # sample 5
+   "Hybrids", # sample 6
+   "Hybrids", # sample 7
+   "Hybrids", # sample 8
+   "Hybrids" 
+  )
+
+dark_params_NOut$population <- as.factor(dark_params_NOut$population)
+levels(dark_params_NOut$population)
+dark_params_NOut$population <- factor(dark_params_NOut$population, levels=c("Mangrove", "Hybrids"))
+#dark_params_NOut$population <- factor(dark_params_NOut$population, labels=c("Population 2", "Hybrid"))
+str(dark_params_NOut)
+
+dark_params_NOut <- dark_params_NOut[, c(1,2,3,4,5,18,6,7,8,9,10,11,12,13,14,15,16,17)] # leave the row index blank to keep all rows
+str(dark_params_NOut)
+
+# I have to remove p due to constant number which will cause trouble later on if included
+dark_params_NOut <- dark_params_NOut[,!names(dark_params_NOut) %in% "p"]
+  
+### Normalization ###
+# apply bestNormalize heuristics
+  params_bns <- dark_params_NOut #bn = bestnormalize, s added to differentiate between Matts and this code
+
+  inst_transformations <- data.frame()
+  for(i in 7:ncol(params_bns)){ #i in 6 => 6 means that from column 6, R is going to normalize the values, so from FqFm until the end of all columns
+  set.seed(3455)
+  dat <- params_bns %>% pull(i)
+  whichnorm <- bestNormalize(dat, standardize = FALSE, out_of_sample = FALSE)
+  #print(colnames(params_bns[i]))
+  #print(whichnorm)
+  params_bns[i] <- whichnorm$x.t
+  
+  trans <- data.frame(variable = colnames(params_bns[i]), transformation = class(whichnorm$chosen_transform))
+  inst_transformations <- rbind(inst_transformations, trans)
+  }
+  
+  rda <- params_bns %>%
+  column_to_rownames(var = "sample_id") %>% 
+  #select(FqFm:SigLCHII) # FqFm and Sig are still included in this figure! Use PQP_Size:SigLCHII
+  select(PQP_Size:SigLCHII)
+  
+# zero mean
+rda <- vegan::decostand(rda, method = "standardize") # make zero mean
+
+# pca
+pca <- rda(rda)
+
+# extract the scores
+scrs_samples <- as.data.frame(scores(pca, display = "sites")) %>% # Extract sample scores
+  rownames_to_column(var = "sample_id")
+scrs_params <- as.data.frame(scores(pca, display = "species")) %>% # Extract parameter scores; PCA coordinates
+  rownames_to_column(var = "dark_params_NOut")
+
+# create plot dataframe
+dark_params_NOut$curve_id <- as.character(dark_params_NOut$curve_id)
+plot_df <- left_join(dark_params_NOut, scrs_samples) #column sample_id in common; will be the first column in new dataset
+
+(p <- ggplot(plot_df, aes(x = PC1, y = PC2)) +
+  geom_point(aes(fill = site, color=site), size = 4, alpha=1.0) +
+  geom_segment(data = scrs_params, aes(x = 0, xend = PC1, y = 0, yend = PC2), 
+               size = 0.5, arrow = arrow(length = unit(0.25, "cm")), colour = "grey") +
+  geom_text(data = scrs_params, aes(x = PC1, y = PC2, label = dark_params_NOut), size = 4) +
+    geom_text(label=dark_params_NOut$sample_id, nudge_x=0, nudge_y=-0.15, check_overlap=T) +
+  scale_fill_manual(values = c("green", "blue")) +
+  scale_color_manual(values = c("green", "blue")) +
+  ggalt::geom_encircle(aes(fill = site), s_shape = 1, expand = 0, alpha = 0.2, show.legend = F) +
+  theme(legend.position = "right", aspect.ratio = 1) +
+  guides(fill = guide_legend(override.aes = list(shape = 21))))
+
+(p <- ggplot(plot_df, aes(x = PC1, y = PC2)) +
+  geom_point(aes(fill = population, color=population), size = 4, alpha=1.0) +
+  geom_segment(data = scrs_params, aes(x = 0, xend = PC1, y = 0, yend = PC2), 
+               size = 0.5, arrow = arrow(length = unit(0.25, "cm")), colour = "grey") +
+  geom_text(data = scrs_params, aes(x = PC1, y = PC2, label = dark_params_NOut), size = 4) +
+    geom_text(label=dark_params_NOut$sample_id, nudge_x=0, nudge_y=-0.15, check_overlap=T) +
+  scale_fill_manual(values=c("orange", "#33A02C")) +
+  scale_color_manual(values=c("orange", "#33A02C")) +
+  ggalt::geom_encircle(aes(fill = population), s_shape = 1, expand = 0, alpha = 0.2, show.legend = F) +
+  theme(legend.position = "right", aspect.ratio = 1) +
+  guides(fill = guide_legend(override.aes = list(shape = 21))))
+
+### PCA ### We have the dataset without the outliers, called dark_params_NOut. The dataset with outliers removed and normalized data is called **params_bns**. I use the code prcomp() to create the **pca_2** which is used to plot the data. This contains the data for 10 principal components for my Soliense parameters.
+
+df <- params_bns %>%
+      #select(FqFm:Ek)
+      select(PQP_Size:SigLCHII)
+pca_2 <- prcomp(df, scale=T) #scale=T gives error, because p is constant, make sure p is removed from dataset. Already done above!
+
+library(ggfortify)
+library(ggalt) #for geom_encircle()
+
+# Figure 2C
+(PCA0.1 <- autoplot(pca_2, data = params_bns, colour = "site", shape = "population", size=2, loadings = TRUE, loadings.colour = 'black', loadings.label = TRUE, loadings.label.size = 4, loadings.label.colour = 'black', loadings.label.repel=T) + 
+  geom_encircle(aes(group=site, colour=site, fill=site), alpha=0.4, s_shape=1, expand=0) +
+  #geom_text(label=params_bns2$sample_id, nudge_x=0.025, check_overlap=T) +
+  scale_colour_manual(
+    name="Site", 
+    breaks=c("reef_4", "mangrove_1" ), 
+    labels=c("Outer reef", "Inner mangrove"),
+    values=c("#1F78B4", "#33A02C")) +
+  scale_fill_manual(
+    name="Site", 
+    breaks=c("reef_4", "mangrove_1" ), 
+    labels=c("Outer reef", "Inner mangrove"),
+    values=c("#1F78B4", "#33A02C")) +
+  scale_shape_discrete(
+    name="Population", 
+    breaks=c("Mangrove", "Hybrids" ), 
+    labels=c("Population 2", "Hybrid")) +
+  theme_bw() +
+    theme(axis.title.x = element_text(size=12, face="bold"),
+    axis.title.y = element_text(size=12, face="bold"),
+    legend.title = element_text(size=12, face="bold"),
+    legend.text = element_text(size=12, face="italic"),
+    axis.text.x= element_text(colour="black", size=10),
+    axis.text.y = element_text(colour="black", size=10),
+    legend.background = element_blank(),
+    legend.box.background = element_rect(colour = "black")))
+#ggsave("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_working/LIFT-Data/R/PCA_LIFT_site_cloneincl.pdf", width=6.6, height=4)
+
+# Supplementary Figure 7A
+(PCA0.1 <- autoplot(pca_2, data = params_bns, colour = "population", shape = "site", size=2, loadings = TRUE, loadings.colour = 'black', loadings.label = TRUE, loadings.label.size = 4, loadings.label.colour = 'black', loadings.label.repel=T) + 
+  geom_encircle(aes(group=population, colour=population, fill=population), alpha=0.4, s_shape=1, expand=0) +
+  #geom_text(label=params_bns2$sample_id, nudge_x=0.025, check_overlap=T) +
+  scale_colour_manual(
+    name="Population", 
+    breaks=c("Mangrove", "Hybrids"),
+    labels=c("Population 2", "Hybrid"),
+    values=c("#33A02C", "orange")) +
+  scale_fill_manual(
+    name="Population", 
+    breaks=c("Mangrove", "Hybrids"),
+    labels=c("Population 2", "Hybrid"),
+    values=c("#33A02C", "orange")) +
+  scale_shape_discrete(
+    name="Site", 
+    breaks=c("reef_4", "mangrove_1" ), 
+    labels=c("Outer reef", "Inner mangrove")) +
+  theme_bw() +
+    theme(axis.title.x = element_text(size=12, face="bold"),
+    axis.title.y = element_text(size=12, face="bold"),
+    legend.title = element_text(size=12, face="bold"),
+    legend.text = element_text(size=12, face="italic"),
+    axis.text.x= element_text(colour="black", size=10),
+    axis.text.y = element_text(colour="black", size=10),
+    legend.background = element_blank(),
+    legend.box.background = element_rect(colour = "black")))
+    #legend.position = c(0.14, 0.25)))
+#ggsave("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_working/LIFT-Data/R/PCA_LIFT_pop_cloneincl.pdf", width=6.6, height=4)
+```
+
+Homogeneity of variance around group centroid is something we test in PERMANOVA but necesarily for PCA.
+
+### Perform PERMANOVA on PCA results
+https://stackoverflow.com/questions/20260434/test-significance-of-clusters-on-a-pca-plot
+https://rpubs.com/oldriku/1090218
+
+adonis just like regular MANOVA or ANOVA gives an overall significance if any of the clusters are significantly different. One would still need to do some sort of post-hoc/pairwise test to verify significance between different clusters. I wonder if there is a non-parametric version of the Hotelling's T2 test.
+
+```{r}
+# PerMANOVA - partitioning the euclidean distance matrix by species
+adonis2(rda ~ site, data = params_bns, method='eu')
+
+#         Df SumOfSqs      R2      F Pr(>F)    
+#site      1   41.355 0.25528 5.8272  0.001 ***
+#Residual 17  120.645 0.74472                  
+#Total    18  162.000 1.00000    
+
+adonis2(rda ~ population, data = params_bns, method='eu')
+#           Df SumOfSqs      R2      F Pr(>F)
+#population  1    7.794 0.04811 0.8593   0.49
+#Residual   17  154.206 0.95189              
+#Total      18  162.000 1.00000   
+```
+```{r}
+### I have to check the assumptions of PERMANOVA, i.e., homogeneity of dispersion around group centroids!
+# However, rda is not a 'dist' object.
+
+# Create a distance matrix
+dist_matrix <- vegdist(rda, method = "euclidean")
+
+# Test for homogeneity of dispersions
+# For "site" the assumption of homogeneity of dispersion around group centroids is met
+betadisp_lift <- betadisper(dist_matrix, params_bns$site)
+plot(betadisp_lift)
+anova(betadisp_lift) # p > 0.05
+
+# For "population" the assumption of homogeneity of dispersion around group centroids is violated
+betadisp_lift_pop <- betadisper(dist_matrix, params_bns$population)
+plot(betadisp_lift_pop)
+anova(betadisp_lift_pop) # p < 0.05
+```
+
+### Extracting data from PCA
+The below will give you Dim.1, Dim.2, Dim.3, etc. values - these are basically PC1, PC2, etc. - I only looked at the Dim.1 and Dim.2 values. Results for variables will give you results for the values of the eigenvectors (lines in your PCA plot) - e.g. for me Soliense parameters.
+
+I used Contributions of variables to the PCs, to see which Soliense parameters contributed the largest loadings to PC1 and PC2 (no stats needed for this - just look at values from running 'res.var$contrib').
+
+Results for individuals will give you results for each replicate (this is what I ran stat analysis on - specifically 'res.ind$coord' - from this analysis this told me whether site (mangrove or reef) separated out from each other. If you get significance this means the site that are significantly different separated out from one another. Because I ran Dim.1 and Dim.2 separately for stat analysis, if you get significance for Dim.1, means species were separated by PC1, if get significance for Dim.2, means sites were separated by PC2)
+```{r}
+LIFT_Statistics <- "~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_working/LIFT-Data/R/"
+setwd(LIFT_Statistics)
+
+library("factoextra")
+#Eigenvalues
+eig.val_Dp <- get_eigenvalue(pca_2)
+eig.val_Dp
+# Results for Variables
+res.var_Dp <- get_pca_var(pca_2)
+res.var_Dp$coord          # Coordinates
+res.var_Dp$contrib        # Contributions to the PCs
+res.var_Dp$cos2           # Quality of representation 
+
+#export Dim.1 and Dim.2 as csv
+c_Dp <- res.var_Dp$contrib[, c("Dim.1", "Dim.2")]
+head(c_Dp)
+#write.csv(c_Dp, file = paste0(LIFT_Statistics, "PCAvarcontrib_DarkParams_SigLCHII_resubmission", Sys.Date(), ".csv"))
+
+#Extract results for individuals
+res.ind_Dp <- get_pca_ind(pca_2)
+res.ind_Dp$coord          # Coordinates
+res.ind_Dp$contrib        # Contributions to the PCs
+res.ind_Dp$cos2  # Quality of representation
+
+# export Dim.1 and Dim.2 as csv. Note: Sys.Date() adds the date the file was made at the end of your file name
+# This will export res.ind$coord -> change this if you want to export one of the other extracted results above
+d_Dp <- res.ind_Dp$coord[, c("Dim.1", "Dim.2")]
+head(d_Dp)
+#write.csv(d_Dp, file = paste0(LIFT_Statistics, "PCAindcoor_DarkParams_SigLCHII_resubmission", Sys.Date(), ".csv"))
+```
+
+### Statistical analysis on PC1 (i.e. Dim.1)
+
+```{r}
+#Reading in new csv file that has your sample info (e.g. for me sample ID, colony, site, habitat, etc.) and the Dim.1 and Dim.2 values
+PCAindcoor_DarkParams_site <- read_csv("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_working/LIFT-Data/R/PCAindcoor_DarkParams_SigLCHII_site_resubmission.csv")
+
+str(PCAindcoor_DarkParams_site)
+PCAindcoor_DarkParams_site$site <- as.factor(PCAindcoor_DarkParams_site$site)
+
+library(car)
+
+#Shapiro test
+shapiro.test(PCAindcoor_DarkParams_site$Dim.1)
+####passed#### 
+
+#Levene test
+leveneTest(Dim.1 ~ site, data=PCAindcoor_DarkParams_site)
+####passed####
+
+#T-test
+res_Dim.1 <- t.test(Dim.1 ~ site, data=PCAindcoor_DarkParams_site, var.equal=T)
+res_Dim.1
+
+#res_Dim.1.1 <- data.frame(unlist(res_Dim.1.1))
+
+####Significant####
+```
+
+Collectively, the first two principal components accounted for 69.66% of the total variance. The first principal component accounted for 49.56% of the total variance, with Tau3QA, Ek, Tau1QA, and Tau2QA contributing the largest loadings. Two Sample t-test on the extracted ordination axes for PC1 confirmed differences between isolates (Two Sample t-test, t(17) = 3.56, p < 0.01).
+
+### Statistical analysis on PC2 (i.e. Dim.2)
+```{r}
+#Shapiro test
+shapiro.test(PCAindcoor_DarkParams_site$Dim.2)
+####Passed####
+
+#Levene test
+leveneTest(Dim.2 ~ site, data=PCAindcoor_DarkParams_site)
+####Passed####
+
+#T-test
+res_Dim.2 <- t.test(Dim.2 ~ site, data=PCAindcoor_DarkParams_site, var.equal=T)
+res_Dim.2
+####Non-significant####
+```
+
+The second principal component accounted for 20.1% of the total variance, with PQP, TPQ_PSI, SigmaLCHII and QPB contributing the largest loadings. Two Sample t-test on the extracted ordination axes for PC2 was not able to confirm differences between isolates (Two Sample t-test, t(17) = 1.06, p = 0.30).
+
+### PCAs with clone removed for population and site
+```{r}
+str(dark_params_NOut)
+
+# I will remove the clones from the dataset that is not yet normalized
+dark_params_NOut <- dark_params_NOut[!(dark_params_NOut$sample_id %in% c("5", "6", "7", "8")), ]
+
+## CLONE REMOVAL PCA ###  
+### Normalization ###
+# apply bestNormalize heuristics
+  params_bns_clonerem <- dark_params_NOut #bn = bestnormalize, s added to differentiate between Matts and this code
+
+  inst_transformations <- data.frame()
+  for(i in 7:ncol(params_bns_clonerem)){ #i in 6 => 6 means that from column 6, R is going to normalize the values, so from FqFm until the end of all columns
+  set.seed(3455)
+  dat <- params_bns_clonerem %>% pull(i)
+  whichnorm <- bestNormalize(dat, standardize = FALSE, out_of_sample = FALSE)
+  #print(colnames(params_bns[i]))
+  #print(whichnorm)
+  params_bns_clonerem[i] <- whichnorm$x.t
+  
+  trans <- data.frame(variable = colnames(params_bns_clonerem[i]), transformation = class(whichnorm$chosen_transform))
+  inst_transformations <- rbind(inst_transformations, trans)
+  }
+  
+  rda_cr <- params_bns_clonerem %>%
+  column_to_rownames(var = "sample_id") %>% 
+  #select(FqFm:SigLCHII) # FqFm and Sig are still included in this figure! Use PQP_Size:SigLCHII
+  select(PQP_Size:SigLCHII)
+  
+# zero mean
+rda_cr <- vegan::decostand(rda, method = "standardize") # make zero mean
+
+# pca
+pca_cr <- rda(rda_cr)
+
+# extract the scores
+scrs_samples_cr <- as.data.frame(scores(pca, display = "sites")) %>% # Extract sample scores
+  rownames_to_column(var = "sample_id")
+scrs_params_cr <- as.data.frame(scores(pca, display = "species")) %>% # Extract parameter scores; PCA coordinates
+  rownames_to_column(var = "dark_params_NOut")
+
+# create plot dataframe
+dark_params_NOut$curve_id <- as.character(dark_params_NOut$curve_id)
+plot_df_cr <- left_join(dark_params_NOut, scrs_samples_cr) #column sample_id in common; will be the first column in new dataset
+
+(p <- ggplot(plot_df_cr, aes(x = PC1, y = PC2)) +
+  geom_point(aes(fill = population, color=population), size = 4, alpha=1.0) +
+  geom_segment(data = scrs_params_cr, aes(x = 0, xend = PC1, y = 0, yend = PC2), 
+               size = 0.5, arrow = arrow(length = unit(0.25, "cm")), colour = "grey") +
+  geom_text(data = scrs_params_cr, aes(x = PC1, y = PC2, label = dark_params_NOut), size = 4) +
+    geom_text(label=dark_params_NOut$sample_id, nudge_x=0, nudge_y=-0.15, check_overlap=T) +
+  #scale_fill_manual(values=c("orange", "#33A02C")) +
+  #scale_color_manual(values=c("orange", "#33A02C")) +
+  scale_fill_manual(values=c("#33A02C", "orange")) +
+  scale_color_manual(values=c("#33A02C", "orange")) +
+  ggalt::geom_encircle(aes(fill = population), s_shape = 1, expand = 0, alpha = 0.2, show.legend = F) +
+  theme(legend.position = "right", aspect.ratio = 1) +
+  guides(fill = guide_legend(override.aes = list(shape = 21))))
+```
+
+```{r}
+df_cr <- params_bns_clonerem %>%
+      #select(FqFm:Ek)
+      select(PQP_Size:SigLCHII)
+pca_cr <- prcomp(df_cr, scale=T) #scale=T gives error, because p is constant, make sure p is removed from dataset. Already done above!
+
+library(ggfortify)
+library(ggalt) #for geom_encircle()
+
+# Supplementary Figure 7B
+(PCA0.1 <- autoplot(pca_cr, data = params_bns_clonerem, colour = "population", shape = "site", size=2, loadings = TRUE, loadings.colour = 'black', loadings.label = TRUE, loadings.label.size = 4, loadings.label.colour = 'black', loadings.label.repel=T) + 
+  geom_encircle(aes(group=population, colour=population, fill=population), alpha=0.4, s_shape=1, expand=0) +
+  #geom_text(label=params_bns2$sample_id, nudge_x=0.025, check_overlap=T) +
+  scale_colour_manual(
+    name="Population", 
+    breaks=c("Mangrove", "Hybrids"),
+    labels=c("Population 2", "Hybrid"),
+    values=c("#33A02C", "orange")) +
+  scale_fill_manual(
+    name="Population", 
+    breaks=c("Mangrove", "Hybrids"),
+    labels=c("Population 2", "Hybrid"),
+    values=c("#33A02C", "orange")) +
+  scale_shape_discrete(
+    name="Site", 
+    breaks=c("reef_4", "mangrove_1" ), 
+    labels=c("Outer reef", "Inner mangrove")) +
+  theme_bw() +
+    theme(axis.title.x = element_text(size=12, face="bold"),
+    axis.title.y = element_text(size=12, face="bold"),
+    legend.title = element_text(size=12, face="bold"),
+    legend.text = element_text(size=12, face="italic"),
+    axis.text.x= element_text(colour="black", size=10),
+    axis.text.y = element_text(colour="black", size=10),
+    legend.background = element_blank(),
+    legend.box.background = element_rect(colour = "black")))
+    #legend.position = c(0.14, 0.25)))
+#ggsave("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_working/LIFT-Data/R/PCA_LIFT_pop_cloneexcl_NEW.pdf", width=6.6, height=4)
+
+# Figure not included (PCA based on site with clone removal)
+(PCA0.1 <- autoplot(pca_cr, data = params_bns_clonerem, colour = "site", shape = "population", size=2, loadings = TRUE, loadings.colour = 'black', loadings.label = TRUE, loadings.label.size = 4, loadings.label.colour = 'black', loadings.label.repel=T) + 
+  geom_encircle(aes(group=site, colour=site, fill=site), alpha=0.4, s_shape=1, expand=0) +
+  #geom_text(label=params_bns2$sample_id, nudge_x=0.025, check_overlap=T) +
+  scale_colour_manual(
+    name="Site", 
+    breaks=c("reef_4", "mangrove_1" ), 
+    labels=c("Outer reef", "Inner mangrove"),
+    values=c("#1F78B4", "#33A02C")) +
+  scale_fill_manual(
+    name="Site", 
+    breaks=c("reef_4", "mangrove_1" ), 
+    labels=c("Outer reef", "Inner mangrove"),
+    values=c("#1F78B4", "#33A02C")) +
+  scale_shape_discrete(
+    name="Population", 
+    breaks=c("Mangrove", "Hybrids" ), 
+    labels=c("Population 2", "Hybrid")) +
+  theme_bw() +
+    theme(axis.title.x = element_text(size=12, face="bold"),
+    axis.title.y = element_text(size=12, face="bold"),
+    legend.title = element_text(size=12, face="bold"),
+    legend.text = element_text(size=12, face="italic"),
+    axis.text.x= element_text(colour="black", size=10),
+    axis.text.y = element_text(colour="black", size=10),
+    legend.background = element_blank(),
+    legend.box.background = element_rect(colour = "black")))
+#ggsave("~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Studie/UvA Master/Research Project/Research Project 2 - UTS/Data_working/LIFT-Data/R/PCA_LIFT_site_cloneincl.pdf", width=6.6, height=4)
+```
+
+### PERMANOVA Population; clone removed
+```{r}
+adonis2(rda_cr ~ population, data = params_bns_clonerem, method='eu')
+#           Df SumOfSqs      R2     F Pr(>F)
+#population  1   14.866 0.11799 1.739  0.164
+#Residual   13  111.134 0.88201             
+#Total      14  126.000 1.00000   
+```
