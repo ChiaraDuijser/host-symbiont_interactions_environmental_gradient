@@ -1,0 +1,221 @@
+---
+title: "Coral Reefs - Abiotic data - Sample Week"
+author: "Chiara Duijser"
+date: "2023-03-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Libraries
+```{r}
+library(dplyr)
+library(lubridate)
+library(ggpubr)
+```
+
+# Set working directory
+```{r}
+setwd("../Abiotic data/Sample Week")
+```
+
+# Mangrove
+Temperature/tide data for sample week (20 October 2022 - 26 October 2022)
+Queensland is time zone Australian Eastern Standard Time (AEST) = UTC+10:00
+
+```{r}
+mangrove <- read.csv("../230328 M_Sample_Week.csv", header=FALSE, comment.char="#")
+mangrove$Date_Time <- as.POSIXct(mangrove$Date_Time, format = "%d/%m/%Y %H:%M") 
+str(mangrove)
+
+mangrove$Light <- as.factor(mangrove$Light)
+```
+
+# Checking if temperature is 25+/-10 in the mangrove
+This is checked in dataframe m_subset where I subsetted the data from 10-02-2022 until 10-02-2023. We tested the accuracy of the HOBO Onset logger in a laboratory setting where we gradually increase temperature and measured the pH. After about 33/34 degrees Celcius, pH starts to decrease quite rapidly. We decided to removed measurements 25+/-8 as we are not sure about the data 8 degrees above and below the calibration temperature.
+
+In the end, 25+/-10 is removed because this falls outside the calibration ranges according to the manufacturer.
+
+```{r}
+# Create an empty dataframe to store the rows that meet the condition
+mangrove_table <- data.frame()
+
+# For-loop through each row of the dataset
+for (i in 1:nrow(mangrove)) {
+  # check if the temperature is within the range
+  if (mangrove$Temperature[i] >= 25 + 10 | mangrove$Temperature[i] <= 25 - 10) {
+    # if the condition is true, add the row to the table
+    mangrove_table <- rbind(mangrove_table, mangrove[i,])
+  }
+}
+
+mangrove_table
+```
+
+## Remove datapoints outside calibration range
+```{r}
+nrow(mangrove)
+
+# Remove rows in m_temp_table from the dataset m_subset and create new dataset
+mangrove_removed <- mangrove[!(mangrove$V1 %in% mangrove_table$V1),] # .x1. %in% .x2. tests whether the values in x1 are in x2. The ! operator reverses the result 
+str(mangrove_removed)
+nrow(mangrove_removed) 
+```
+
+Grey shading for darkness and lightgrey shading for light based on first and last light from Willyweather.com.au
+```{r}
+ylab <- expression("Temperature " ( degree*C))
+(m_removed_temp_sample_week <- ggplot(mangrove_removed, aes(x=Date_Time, y=Temperature)) +
+  annotate("rect", xmin=as.POSIXct("2022-10-20 00:16:00"), xmax=as.POSIXct("2022-10-20 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.5) +
+  annotate("rect", xmin=as.POSIXct("2022-10-20 05:16:00"), xmax=as.POSIXct("2022-10-20 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-20 18:16:00"), xmax=as.POSIXct("2022-10-21 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-21 05:16:00"), xmax=as.POSIXct("2022-10-21 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-21 18:16:00"), xmax=as.POSIXct("2022-10-22 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-22 05:16:00"), xmax=as.POSIXct("2022-10-22 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-22 18:16:00"), xmax=as.POSIXct("2022-10-23 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-23 05:16:00"), xmax=as.POSIXct("2022-10-23 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-23 18:16:00"), xmax=as.POSIXct("2022-10-24 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-24 05:16:00"), xmax=as.POSIXct("2022-10-24 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-24 18:16:00"), xmax=as.POSIXct("2022-10-25 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-25 05:16:00"), xmax=as.POSIXct("2022-10-25 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-25 18:16:00"), xmax=as.POSIXct("2022-10-26 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-26 05:16:00"), xmax=as.POSIXct("2022-10-26 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-26 18:16:00"), xmax=as.POSIXct("2022-10-26 23:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    geom_vline(xintercept=as.numeric(as.POSIXct("2022-10-23 10:16:00", format = "%Y-%m-%d %H:%M:%S")), linetype=2, color="#33A02C") +
+  geom_line(color="#33A02C") + 
+  labs(x="", y=ylab, title="Inner mangrove") +
+  scale_x_datetime(date_breaks="1 day", date_labels = "%d %b %Y", limits=lims_tide) +
+  theme_bw() +
+  #theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  scale_y_continuous(limits = c(20, 40), breaks = seq(20, 40, by = 5)))
+#ggsave("m_temp_sample_week.pdf", width=10, height=3)
+
+ylab <- "pH"
+(m_removed_pH_sample_week <- ggplot(mangrove_removed, aes(x=Date_Time, y=pH_T)) +
+      annotate("rect", xmin=as.POSIXct("2022-10-20 00:16:00"), xmax=as.POSIXct("2022-10-20 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.5) +
+  annotate("rect", xmin=as.POSIXct("2022-10-20 05:16:00"), xmax=as.POSIXct("2022-10-20 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-20 18:16:00"), xmax=as.POSIXct("2022-10-21 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-21 05:16:00"), xmax=as.POSIXct("2022-10-21 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-21 18:16:00"), xmax=as.POSIXct("2022-10-22 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-22 05:16:00"), xmax=as.POSIXct("2022-10-22 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-22 18:16:00"), xmax=as.POSIXct("2022-10-23 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-23 05:16:00"), xmax=as.POSIXct("2022-10-23 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-23 18:16:00"), xmax=as.POSIXct("2022-10-24 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-24 05:16:00"), xmax=as.POSIXct("2022-10-24 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-24 18:16:00"), xmax=as.POSIXct("2022-10-25 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-25 05:16:00"), xmax=as.POSIXct("2022-10-25 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-25 18:16:00"), xmax=as.POSIXct("2022-10-26 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-26 05:16:00"), xmax=as.POSIXct("2022-10-26 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-26 18:16:00"), xmax=as.POSIXct("2022-10-26 23:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+  geom_vline(xintercept=as.numeric(as.POSIXct("2022-10-23 10:16:00", format = "%Y-%m-%d %H:%M:%S")), linetype=2, color="#33A02C") +
+  geom_line(color="#33A02C") + 
+  labs(x="", y=ylab) +
+  scale_x_datetime(date_breaks="1 day", date_labels = "%d %b %Y", limits=lims_tide) +
+  theme_bw() +
+  #theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  scale_y_continuous(limits = c(6, 9), breaks = seq(6, 9, by = 1)))
+```
+
+
+# Reef
+```{r}
+reef <- read.csv("../230329 R_Sample_Week.csv", header=FALSE, comment.char="#")
+reef$Date_Time <- as.POSIXct(reef$Date_Time, format = "%d/%m/%Y %H:%M") # %Y- or %Y/!
+str(reef)
+
+reef$Light <- as.factor(reef$Light)
+```
+
+## Graphs reef
+```{r}
+ylab <- expression("Temperature " ( degree*C))
+(r_temp_sample_week <- ggplot(reef, aes(x=Date_Time, y=Temperature)) +
+  annotate("rect", xmin=as.POSIXct("2022-10-20 00:23:51"), xmax=as.POSIXct("2022-10-20 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.5) +
+  annotate("rect", xmin=as.POSIXct("2022-10-20 05:16:00"), xmax=as.POSIXct("2022-10-20 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-20 18:16:00"), xmax=as.POSIXct("2022-10-21 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-21 05:16:00"), xmax=as.POSIXct("2022-10-21 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-21 18:16:00"), xmax=as.POSIXct("2022-10-22 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-22 05:16:00"), xmax=as.POSIXct("2022-10-22 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-22 18:16:00"), xmax=as.POSIXct("2022-10-23 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-23 05:16:00"), xmax=as.POSIXct("2022-10-23 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-23 18:16:00"), xmax=as.POSIXct("2022-10-24 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-24 05:16:00"), xmax=as.POSIXct("2022-10-24 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-24 18:16:00"), xmax=as.POSIXct("2022-10-25 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-25 05:16:00"), xmax=as.POSIXct("2022-10-25 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-25 18:16:00"), xmax=as.POSIXct("2022-10-26 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-26 05:16:00"), xmax=as.POSIXct("2022-10-26 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-26 18:16:00"), xmax=as.POSIXct("2022-10-26 23:23:51"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    geom_vline(xintercept=as.numeric(as.POSIXct("2022-10-23 14:16:20", format = "%Y-%m-%d %H:%M:%S")), linetype=2, color="#1F78B4") +
+  geom_line(color="#1F78B4") + 
+  labs(x="", y=ylab, title="Outer reef") +
+  scale_x_datetime(date_breaks="1 day", date_labels = "%d %b %Y", limits=lims_tide_reef) +
+  theme_bw() +
+  #theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  scale_y_continuous(limits = c(20, 40), breaks = seq(20, 40, by = 5)))
+#ggsave("r_temp_sample_week.pdf", width=10, height=3)
+
+ylab <- "pH"
+(r_pH_sample_week <- ggplot(reef, aes(x=Date_Time, y=pH_T)) +
+      annotate("rect", xmin=as.POSIXct("2022-10-20 00:23:51"), xmax=as.POSIXct("2022-10-20 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.5) +
+  annotate("rect", xmin=as.POSIXct("2022-10-20 05:16:00"), xmax=as.POSIXct("2022-10-20 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-20 18:16:00"), xmax=as.POSIXct("2022-10-21 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-21 05:16:00"), xmax=as.POSIXct("2022-10-21 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-21 18:16:00"), xmax=as.POSIXct("2022-10-22 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-22 05:16:00"), xmax=as.POSIXct("2022-10-22 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-22 18:16:00"), xmax=as.POSIXct("2022-10-23 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-23 05:16:00"), xmax=as.POSIXct("2022-10-23 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-23 18:16:00"), xmax=as.POSIXct("2022-10-24 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-24 05:16:00"), xmax=as.POSIXct("2022-10-24 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-24 18:16:00"), xmax=as.POSIXct("2022-10-25 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-25 05:16:00"), xmax=as.POSIXct("2022-10-25 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-25 18:16:00"), xmax=as.POSIXct("2022-10-26 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-26 05:16:00"), xmax=as.POSIXct("2022-10-26 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-26 18:16:00"), xmax=as.POSIXct("2022-10-26 23:23:51"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+  geom_vline(xintercept=as.numeric(as.POSIXct("2022-10-23 14:19:20", format = "%Y-%m-%d %H:%M:%S")), linetype=2, color="#1F78B4") +
+  geom_line(color="#1F78B4") + 
+  labs(x="", y=ylab) +
+  scale_x_datetime(date_breaks="1 day", date_labels = "%d %b %Y", limits=lims_tide_reef) +
+  theme_bw() +
+  #theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  scale_y_continuous(limits = c(6, 9), breaks = seq(6, 9, by = 1)))
+```
+
+# Tide graph for both reef and mangrove
+```{r}
+# Supplementary Figure 6
+lims_tide_all <- as.POSIXct(strptime(c("2022-10-20 00:16:00","2022-10-26 23:23:51"), format = "%Y-%m-%d %H:%M:%S")) 
+ylab <- "Tidal height (m)"
+(all_tides_sample_week <- ggplot(reef, aes(x=Date_Time, y=Tides)) +
+  annotate("rect", xmin=as.POSIXct("2022-10-20 00:16:00"), xmax=as.POSIXct("2022-10-20 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.5) +
+  annotate("rect", xmin=as.POSIXct("2022-10-20 05:16:00"), xmax=as.POSIXct("2022-10-20 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-20 18:16:00"), xmax=as.POSIXct("2022-10-21 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-21 05:16:00"), xmax=as.POSIXct("2022-10-21 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-21 18:16:00"), xmax=as.POSIXct("2022-10-22 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-22 05:16:00"), xmax=as.POSIXct("2022-10-22 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-22 18:16:00"), xmax=as.POSIXct("2022-10-23 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-23 05:16:00"), xmax=as.POSIXct("2022-10-23 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-23 18:16:00"), xmax=as.POSIXct("2022-10-24 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-24 05:16:00"), xmax=as.POSIXct("2022-10-24 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-24 18:16:00"), xmax=as.POSIXct("2022-10-25 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-25 05:16:00"), xmax=as.POSIXct("2022-10-25 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-25 18:16:00"), xmax=as.POSIXct("2022-10-26 05:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +
+    annotate("rect", xmin=as.POSIXct("2022-10-26 05:16:00"), xmax=as.POSIXct("2022-10-26 18:16:00"), ymin = -Inf, ymax = Inf, color = NA, fill="lightgrey", alpha = 0.2) +
+  annotate("rect", xmin=as.POSIXct("2022-10-26 18:16:00"), xmax=as.POSIXct("2022-10-26 23:23:51"), ymin = -Inf, ymax = Inf, color = NA, fill="grey", alpha = 0.6) +  
+  geom_vline(xintercept=as.numeric(as.POSIXct("2022-10-23 10:16:00", format = "%Y-%m-%d %H:%M:%S")), linetype=2, color="#33A02C") +
+  geom_vline(xintercept=as.numeric(as.POSIXct("2022-10-23 14:16:20", format = "%Y-%m-%d %H:%M:%S")), linetype=2, color="#1F78B4") +
+  geom_line(color="grey23") +
+  scale_x_datetime(date_breaks="1 day", date_labels = "%d %b %Y", limits=lims_tide_all) +
+  labs(x="", y=ylab) +
+  theme_bw()) #+
+  #theme(axis.text.x=element_text(angle=45, hjust=1)))
+ggsave("all_tide.pdf", width=15, height=3)
+```
+
+# Temperature and pH in one graph for outer reef and inner mangrove
+```{r}
+# Supplementary Figure 6
+(all_removed <- ggarrange(r_temp_sample_week, m_removed_temp_sample_week, r_pH_sample_week, m_removed_pH_sample_week, ncol=2, nrow=2))
+ggsave("Temp_pH_removed Sample Week.pdf", width=15, height=5)
+```
