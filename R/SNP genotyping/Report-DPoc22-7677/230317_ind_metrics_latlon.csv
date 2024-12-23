@@ -1,0 +1,92 @@
+﻿id,pop,Chiara_id,Colony_id,plate_loc,lat,lon
+1,Supervisor,1,Supervisor_1,C10,,
+2,Supervisor,2,Supervisor_2,D10,,
+3,Supervisor,3,Supervisor_3,E10,,
+4,Supervisor,4,Supervisor_4,F10,,
+5,Supervisor,5,Supervisor_5,G10,,
+6,Supervisor,6,Supervisor_6,H10,,
+7,Supervisor,7,Supervisor_7,A11,,
+8,Supervisor,8,Supervisor_8,B11,,
+9,Supervisor,9,Supervisor_9,C11,,
+10,Supervisor,10,Supervisor_10,D11,,
+11,Supervisor,11,Supervisor_11,E11,,
+12,Supervisor,12,Supervisor_12,F11,,
+13,Supervisor,13,Supervisor_13,G11,,
+14,Supervisor,14,Supervisor_14,H11,,
+15,Supervisor,15,Supervisor_15,A12,,
+16,Supervisor,16,Supervisor_16,B12,,
+17,Supervisor,17,Supervisor_17,C12,,
+18,Supervisor,18,Supervisor_18,D12,,
+18.1,Supervisor,18.1,Supervisor_18.1,E12,,
+19,Inner mangrove,19,AA,A1,-16.3884536,145.5664415
+19.1,Inner mangrove,19.1,AA2,B1,-16.3884536,145.5664415
+20,Inner mangrove,20,AB,C1,-16.3884536,145.5664415
+20.1,Inner mangrove,20.1,AB2,D1,-16.3884536,145.5664415
+21,Inner mangrove,21,AC,E1,-16.3884536,145.5664415
+21.1,Inner mangrove,21.1,AC2,F1,-16.3884536,145.5664415
+22,Inner mangrove,22,AD,G1,-16.3884536,145.5664415
+22.1,Inner mangrove,22.1,AD2,H1,-16.3884536,145.5664415
+23,Inner mangrove,23,AE,A2,-16.3884536,145.5664415
+23.1,Inner mangrove,23.1,AE2,B2,-16.3884536,145.5664415
+24,Inner mangrove,24,AF,C2,-16.3884536,145.5664415
+24.1,Inner mangrove,24.1,AF2,D2,-16.3884536,145.5664415
+25,Outer mangrove,25,BA,E2,-16.38804703,145.5657924
+25.1,Outer mangrove,25.1,BA2,F2,-16.38804703,145.5657924
+26,Outer mangrove,27,BC,A3,-16.38804703,145.5657924
+26.1,Outer mangrove,26,BB,G2,-16.38804703,145.5657924
+26.2,Outer mangrove,26.1,BB2,H2,-16.38804703,145.5657924
+27,Outer mangrove,27.1,BC2,B3,-16.38804703,145.5657924
+27.1,Outer mangrove,28,BD,C3,-16.38804703,145.5657924
+28,Outer mangrove,28.1,BD2,D3,-16.38804703,145.5657924
+28.1,Outer mangrove,29,BE,E3,-16.38804703,145.5657924
+29,Outer mangrove,29.1,BE2,F3,-16.38804703,145.5657924
+29.1,Outer mangrove,30,BF,G3,-16.38804703,145.5657924
+30,Inner reef,31,CA,A4,-16.38320156,145.5647035
+30.1,Outer mangrove,30.1,BF2,H3,-16.38804703,145.5657924
+31,Inner reef,31.1,CA2,B4,-16.38320156,145.5647035
+31.1,Inner reef,32,CB,C4,-16.38320156,145.5647035
+32,Inner reef,32.1,CB2,D4,-16.38320156,145.5647035
+32.1,Inner reef,33,CC,E4,-16.38320156,145.5647035
+33,Inner reef,33.1,CC2,F4,-16.38320156,145.5647035
+34,Inner reef,35,CE,A5,-16.38320156,145.5647035
+35,Inner reef,35.1,CE2,B5,-16.38320156,145.5647035
+35.1,Inner reef,36,CF,C5,-16.38320156,145.5647035
+36,Inner reef,36.1,CF2,D5,-16.38320156,145.5647035
+36.1,Outer reef,37,DA,E5,-16.38622774,145.5574937
+36.2,Outer reef,37.1,DA2,F5,-16.38622774,145.5574937
+37,Outer reef,38,DB,G5,-16.38622774,145.5574937
+37.1,Outer reef,38.1,DB2 ,H5,-16.38622774,145.5574937
+38,Outer reef,39,DC,A6,-16.38622774,145.5574937
+38.1,Outer reef,39.1,DC2,B6,-16.38622774,145.5574937
+39,Outer reef,40,DD,C6,-16.38622774,145.5574937
+39.1,Outer reef,40.1,DD2,D6,-16.38622774,145.5574937
+40,Outer reef,41,DE,E6,-16.38622774,145.5574937
+40.1,Outer reef,41.1,DE2,F6,-16.38622774,145.5574937
+41,Outer reef,42,DF,G6,-16.38622774,145.5574937
+41.1,Outer reef,42.1,DF2,H6,-16.38622774,145.5574937
+42,Extra,43,P. damicornis 1,A7,-16.38622774,145.5574937
+42.1,Extra,43.1,P. damicornis 1.2,B7,-16.38622774,145.5574937
+43,Extra,44,P. damicornis 2,C7,-16.38622774,145.5574937
+43.1,Extra,44.1,P. damicornis 2.2,D7,-16.38622774,145.5574937
+44,Extra,45,P. damicornis 3,E7,-16.38622774,145.5574937
+44.1,Extra,45.1,P. damicornis 3.2,F7,-16.38622774,145.5574937
+45,Extra,46,P. verrucosa 1,G7,-16.38622774,145.5574937
+45.1,Extra,46.1,P. verrucosa 1.2,H7,-16.38622774,145.5574937
+46,Extra,47,P. verrucosa 2,A8,-16.38622774,145.5574937
+46.1,Extra,47.1,P. verrucosa 2.2,B8,-16.38622774,145.5574937
+46.2,Opal - damicornis,48,P. damicornis Rayban 1,C8,-16.22397095,145.8894659
+47,Opal - damicornis,48.1,P. damicornis Rayban 1.2,D8,-16.22397095,145.8894659
+47.1,Opal - damicornis,49,P. damicornis Rayban 2,E8,-16.22397095,145.8894659
+48,Opal - damicornis,49.1,P. damicornis Rayban 2.2,F8,-16.22397095,145.8894659
+48.1,Opal - damicornis,50,P. damicornis Rayban 3,G8,-16.22397095,145.8894659
+49,Opal - verrucosa,51,P. verrucosa Rayban 1,A9,-16.22397095,145.8894659
+49.1,Opal - damicornis,50.1,P. damicornis Rayban 3.2,H8,-16.22397095,145.8894659
+50,Opal - verrucosa,51.1,P. verrucosa Rayban 1.2,B9,-16.22397095,145.8894659
+50.1,Opal - verrucosa,52,P. verrucosa Rayban 2,C9,-16.22397095,145.8894659
+51,Opal - verrucosa,52.1,P. verrucosa Rayban 2.2,D9,-16.22397095,145.8894659
+51.1,Opal - verrucosa,53,P. verrucosa Rayban 3,E9,-16.22397095,145.8894659
+52,Opal - verrucosa,53.1,P. verrucosa Rayban 3.2,F9,-16.22397095,145.8894659
+52.1,Opal - acuta,54,P. acuta Rayban 1,G9,-16.22397095,145.8894659
+53,Opal - acuta,55,P. acuta Rayban 2,A10,-16.22397095,145.8894659
+53.1,Opal - acuta,54.1,P. acuta Rayban 1.2,H9,-16.22397095,145.8894659
+54,Opal - acuta,55.1,P. acuta Rayban 2.2,B10,-16.22397095,145.8894659
